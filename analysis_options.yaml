@@ -1,0 +1,22 @@
+# این فایل قوانین لایو آنالیزور کد را برای پروژه سفیر تنظیم می‌کند
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # جلوگیری از ایجاد خطای سخت‌گیرانه برای پرینت‌های دیباگ فایربیس
+    avoid_print: ignore
+    # هشدارهای مربوط به متغیرهای تعریف شده ولی استفاده نشده
+    unused_local_variable: warning
+    unused_import: warning
+
+linter:
+  rules:
+    # فعال کردن قانون کوتیشن تکی برای یکدستی کدهای پروژه سفیر
+    prefer_single_quotes: true
+    
+    # غیرفعال کردن اجبار به نوشتن const در همه جا (گاهی در وب ادمین دست و پا گیر می‌شود)
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    
+    # جلوگیری از ایجاد کرش یا اشتباه در تعریف متغیرهای داینامیک دیتابیس
+    avoid_dynamic_calls: false

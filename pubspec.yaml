@@ -1,0 +1,46 @@
+name: safir_admin
+description: "A new Flutter project for Safir Admin Panel."
+publish_to: 'none'
+
+version: 0.1.0
+
+environment:
+  sdk: '>=2.19.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  
+  # نسخه های هماهنگ و باثبات فایربیس
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.8
+  firebase_database: ^10.4.8
+
+  # ابزارها و مدیریت وضعیت
+  provider: ^6.1.1
+  flutter_admin_scaffold: ^1.4.0
+  easy_localization: ^3.0.3
+  url_launcher: ^6.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+    - assets/translations/
+
+  fonts:
+    - family: IranYekan
+      fonts:
+        - asset: fonts/iranyekanwebregular.ttf
+        - asset: fonts/iranyekanwebbold.ttf
+          weight: 700
