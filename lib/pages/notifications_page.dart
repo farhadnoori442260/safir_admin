@@ -18,7 +18,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   String _targetGroup = 'all'; // 'all', 'drivers', 'users'
   bool _isSending = false;
 
-  // 🔄 متد ثبت و ارسال اعلان
+  // 🔄 متد جدید و پیشرفته ارسال اعلان به تمام کاربران و رانندگان
   Future<void> _sendNotification() async {
     String title = _titleController.text.trim();
     String body = _bodyController.text.trim();
@@ -38,15 +38,53 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
-      // ۱. ثبت در دیتابیس نوتیفیکیشن‌ها
-      await FirebaseFirestore.instance.collection("notifications").add({
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      // ۱. ثبت در کلاکشن کلی notifications برای پنل ادمین
+      DocumentReference globalNotifRef =
+          FirebaseFirestore.instance.collection("notifications").doc();
+
+      Map<String, dynamic> notifData = {
         "title": title,
         "body": body,
         "targetGroup": _targetGroup,
         "createdAt": FieldValue.serverTimestamp(),
-      });
+        "isRead": false,
+      };
 
-      // ۲. ثبت در دیتابیس فعالیت‌های اخیر برای داشبورد
+      batch.set(globalNotifRef, notifData);
+
+      // ۲. ثبت در کلاکشن کلی messages (پشتیبانی از ساختارهای دیگر)
+      DocumentReference globalMsgRef =
+          FirebaseFirestore.instance.collection("messages").doc();
+      batch.set(globalMsgRef, notifData);
+
+      // ۳. پخش پیام بر اساس گروه هدف (ارسال مستقیم به پروفایل تک‌تک رانندگان/مسافران)
+      if (_targetGroup == 'all' || _targetGroup == 'drivers') {
+        var driversSnapshot =
+            await FirebaseFirestore.instance.collection("drivers").get();
+        for (var doc in driversSnapshot.docs) {
+          DocumentReference driverNotifRef = doc.reference
+              .collection("notifications")
+              .doc(globalNotifRef.id);
+          batch.set(driverNotifRef, notifData);
+        }
+      }
+
+      if (_targetGroup == 'all' || _targetGroup == 'users') {
+        var usersSnapshot =
+            await FirebaseFirestore.instance.collection("users").get();
+        for (var doc in usersSnapshot.docs) {
+          DocumentReference userNotifRef =
+              doc.reference.collection("notifications").doc(globalNotifRef.id);
+          batch.set(userNotifRef, notifData);
+        }
+      }
+
+      // ۴. اجرای همزمان (Commit)
+      await batch.commit();
+
+      // ۵. ثبت در دیتابیس فعالیت‌های اخیر داشبورد
       String targetText = _targetGroup == 'drivers'
           ? 'رانندگان'
           : (_targetGroup == 'users' ? 'مسافران' : 'همه کاربران');
@@ -64,7 +102,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("پیام با موفقیت ثبت و ارسال شد"),
+            content: Text("پیام با موفقیت به تمام رانندگان و مسافران ارسال شد"),
             backgroundColor: Colors.green,
           ),
         );
@@ -262,7 +300,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection("notifications")
-                  .orderBy("createdAt", descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
