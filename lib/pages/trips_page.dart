@@ -144,6 +144,23 @@ class _TripsPageState extends State<TripsPage> {
                       String docId = tripDoc.id;
                       String shortId = docId.substring(0, docId.length > 6 ? 6 : docId.length);
 
+                      // 📍 استخراج هوشمند تمام کلیدها برای راننده و مسافر
+                      String driverName = trip['driverName'] ?? 
+                                         trip['driver_name'] ?? 
+                                         trip['driverDetails']?['name'] ?? 
+                                         trip['driverId'] ?? 
+                                         trip['driver_id'] ?? 
+                                         'در انتظار راننده';
+
+                      String userName = trip['userName'] ?? 
+                                       trip['user_name'] ?? 
+                                       trip['passengerName'] ?? 
+                                       trip['passenger_name'] ?? 
+                                       trip['name'] ?? 
+                                       trip['userId'] ?? 
+                                       trip['user_id'] ?? 
+                                       'نامشخص';
+
                       // 📍 بررسی هوشمند تمام کلیدهای ممکن برای مبدأ، مقصد و زمان
                       String origin = trip['originAddress'] ?? 
                                       trip['origin_address'] ?? 
@@ -165,6 +182,10 @@ class _TripsPageState extends State<TripsPage> {
                                     trip['date'] ?? 
                                     trip['formattedTime'] ?? '-';
 
+                      String fare = trip['fareAmount']?.toString() ?? 
+                                    trip['fare']?.toString() ?? 
+                                    trip['price']?.toString() ?? '0';
+
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
@@ -174,12 +195,12 @@ class _TripsPageState extends State<TripsPage> {
                         ),
                         child: Row(
                           children: [
-                            CommonMethods.data(1, Text(shortId)),
-                            CommonMethods.data(1, Text(trip['driverName'] ?? trip['driver_name'] ?? 'در انتظار راننده')),
-                            CommonMethods.data(1, Text(trip['userName'] ?? trip['user_name'] ?? trip['name'] ?? 'نامشخص')),
-                            CommonMethods.data(1, Text(origin)),
-                            CommonMethods.data(1, Text(destination)),
-                            CommonMethods.data(1, Text(trip['fareAmount']?.toString() ?? trip['fare']?.toString() ?? '0')),
+                            CommonMethods.data(1, Text(shortId, style: const TextStyle(fontWeight: FontWeight.bold))),
+                            CommonMethods.data(1, Text(driverName)),
+                            CommonMethods.data(1, Text(userName)),
+                            CommonMethods.data(1, Text(origin, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            CommonMethods.data(1, Text(destination, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            CommonMethods.data(1, Text(fare)),
                             CommonMethods.data(1, Text(time)),
                           ],
                         ),
