@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +20,54 @@ class _NotificationsPageState extends State<NotificationsPage> {
   String _targetGroup = 'all'; // 'all', 'drivers', 'users'
   bool _isSending = false;
 
-  // 🔄 متد جدید و پیشرفته ارسال اعلان به تمام کاربران و رانندگان
+  // 📍 متد ارسال درخواست به FCM جهت نمایش بنر نوتیفیکیشن بالای گوشی
+  Future<void> _sendFcmPushNotification({
+    required String title,
+    required String body,
+    required String targetGroup,
+  }) async {
+    try {
+      // تعیین موضوع جهت ارسال همگانی
+      List<String> topics = [];
+      if (targetGroup == 'all') {
+        topics = ['drivers', 'users'];
+      } else if (targetGroup == 'drivers') {
+        topics = ['drivers'];
+      } else {
+        topics = ['users'];
+      }
+
+      // کلید سرور فایربیس (در صورت استفاده از Legacy HTTP API)
+      const String fcmServerKey = 'YOUR_FIREBASE_SERVER_KEY';
+
+      for (String topic in topics) {
+        await http.post(
+          Uri.parse('https://fcm.googleapis.com/fcm/send'),
+          headers: <String, String>{
+            'Content-Type': 'application/json',
+            'Authorization': 'key=$fcmServerKey',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'notification': <String, dynamic>{
+              'title': title,
+              'body': body,
+              'sound': 'default',
+            },
+            'priority': 'high',
+            'data': <String, dynamic>{
+              'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+              'type': 'admin_notification',
+            },
+            'to': '/topics/$topic',
+          }),
+        );
+      }
+    } catch (e) {
+      debugPrint("FCM Push Error: $e");
+    }
+  }
+
+  // 🔄 متد کامل ارسال اعلان به تمام کاربران و رانندگان
   Future<void> _sendNotification() async {
     String title = _titleController.text.trim();
     String body = _bodyController.text.trim();
@@ -84,7 +133,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
       // ۴. اجرای همزمان (Commit)
       await batch.commit();
 
-      // ۵. ثبت در دیتابیس فعالیت‌های اخیر داشبورد
+      // ۵. ارسال نوتیفیکیشن زنده به FCM برای نمایش بالای گوشی
+      await _sendFcmPushNotification(
+        title: title,
+        body: body,
+        targetGroup: _targetGroup,
+      );
+
+      // ۶. ثبت در دیتابیس فعالیت‌های اخیر داشبورد
       String targetText = _targetGroup == 'drivers'
           ? 'رانندگان'
           : (_targetGroup == 'users' ? 'مسافران' : 'همه کاربران');
