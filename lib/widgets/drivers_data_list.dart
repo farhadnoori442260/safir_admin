@@ -22,22 +22,30 @@ class _DriversDataListState extends State<DriversDataList> {
   final Stream<QuerySnapshot> _driversStream =
       FirebaseFirestore.instance.collection("drivers").snapshots();
 
-  Future<void> _updateDriverStatus({
+  // 📍 متد هوشمند به‌روزرسانی وضعیت راننده در تمام فیلدهای ممکن
+  Future<void> _updateDriverApproval({
     required String driverId,
-    required String statusKey,
-    required dynamic statusValue,
-    required String successMessage,
+    required bool currentApproved,
   }) async {
+    bool newStatus = !currentApproved;
     try {
       await FirebaseFirestore.instance
           .collection("drivers")
           .doc(driverId)
-          .update({statusKey: statusValue});
+          .update({
+        "isApproved": newStatus,
+        "status": newStatus ? "approved" : "pending",
+        "newDriverStatus": newStatus ? "approved" : "pending",
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(successMessage),
+            content: Text(
+              newStatus
+                  ? "مدارک راننده با موفقیت تأیید شد"
+                  : "وضعیت مدارک به 'در انتظار' تغییر یافت",
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -54,32 +62,99 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
+  // 📍 متد هوشمند تغییر وضعیت مسدودی راننده
+  Future<void> _updateDriverBlockStatus({
+    required String driverId,
+    required bool currentBlocked,
+  }) async {
+    bool newBlockState = !currentBlocked;
+    try {
+      await FirebaseFirestore.instance
+          .collection("drivers")
+          .doc(driverId)
+          .update({
+        "isBlocked": newBlockState,
+        "blockStatus": newBlockState ? "yes" : "no",
+        "status": newBlockState ? "blocked" : "approved",
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newBlockState
+                  ? "راننده مسدود شد"
+                  : "راننده از حالت مسدود خارج شد",
+            ),
+            backgroundColor: newBlockState ? Colors.red : Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("خطا در به‌روزرسانی: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 📍 نمایش مدارک راننده با پشتیبانی از چندین عکس
   void _showImageDialog(
-      BuildContext context, String imageUrl, String title) {
+      BuildContext context, Map<String, dynamic> driverData, String title) {
+    List<String> imageUrls = [];
+
+    // جمع‌آوری تمام لینک‌های عکس مدارک موجود در سند راننده
+    if (driverData["idCardUrl"] != null) imageUrls.add(driverData["idCardUrl"]);
+    if (driverData["id_card_url"] != null) imageUrls.add(driverData["id_card_url"]);
+    if (driverData["licenseUrl"] != null) imageUrls.add(driverData["licenseUrl"]);
+    if (driverData["license_url"] != null) imageUrls.add(driverData["license_url"]);
+    if (driverData["carPhotoUrl"] != null) imageUrls.add(driverData["carPhotoUrl"]);
+
+    imageUrls = imageUrls.toSet().toList(); // حذف موارد تکراری
+
+    if (imageUrls.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("هیچ تصویری برای مدارک این راننده ثبت نشده است.")),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                imageUrl,
-                height: 250,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 150,
-                  color: Colors.grey[200],
-                  child: const Center(
-                    child: Icon(Icons.broken_image, size: 50, color: Colors.grey),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: imageUrls.map((url) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      url,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        height: 120,
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              }).toList(),
             ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -125,10 +200,15 @@ class _DriversDataListState extends State<DriversDataList> {
         var allDocs = snapshotData.data!.docs;
         var filteredDocs = allDocs.where((doc) {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-          String name = (data["name"] ?? '').toString().toLowerCase();
-          String phone = (data["phone"] ?? '').toString().toLowerCase();
-          bool isApproved = data["isApproved"] ?? false;
-          bool isBlocked = data["isBlocked"] ?? false;
+
+          String name = (data["name"] ?? data["driver_name"] ?? '').toString().toLowerCase();
+          String phone = (data["phone"] ?? data["phoneNumber"] ?? '').toString().toLowerCase();
+
+          var approvedVal = data["isApproved"] ?? data["status"];
+          bool isApproved = approvedVal == true || approvedVal == "approved";
+
+          var blockedVal = data["isBlocked"] ?? data["blockStatus"];
+          bool isBlocked = blockedVal == true || blockedVal == "yes" || blockedVal == "blocked";
 
           // ۱. چک کردن متن جستجو
           String query = widget.searchQuery.trim().toLowerCase();
@@ -166,8 +246,22 @@ class _DriversDataListState extends State<DriversDataList> {
             var doc = filteredDocs[index];
             Map<String, dynamic> driverData = doc.data() as Map<String, dynamic>;
 
-            bool isApproved = driverData["isApproved"] ?? false;
-            bool isBlocked = driverData["isBlocked"] ?? false;
+            // 📍 استخراج هوشمند پارامترها
+            String driverName = driverData["name"] ?? driverData["driver_name"] ?? 'unknown'.tr();
+            String phone = driverData["phone"] ?? driverData["phoneNumber"] ?? '-';
+            
+            String carModel = driverData["carModel"] ?? driverData["car_model"] ?? driverData["carDetails"]?["carModel"] ?? '';
+            String carColor = driverData["carColor"] ?? driverData["car_color"] ?? driverData["carDetails"]?["carColor"] ?? '';
+            String carInfo = "$carModel $carColor".trim();
+            if (carInfo.isEmpty) carInfo = "-";
+
+            String? photoUrl = driverData["photoUrl"] ?? driverData["photo_url"] ?? driverData["user_image"];
+
+            var approvedVal = driverData["isApproved"] ?? driverData["status"];
+            bool isApproved = approvedVal == true || approvedVal == "approved";
+
+            var blockedVal = driverData["isBlocked"] ?? driverData["blockStatus"];
+            bool isBlocked = blockedVal == true || blockedVal == "yes" || blockedVal == "blocked";
 
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -191,7 +285,7 @@ class _DriversDataListState extends State<DriversDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        doc.id.substring(0, 6),
+                        doc.id.substring(0, doc.id.length > 6 ? 6 : doc.id.length),
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -208,17 +302,15 @@ class _DriversDataListState extends State<DriversDataList> {
                           CircleAvatar(
                             radius: 16,
                             backgroundColor: Colors.grey[200],
-                            backgroundImage: driverData["photoUrl"] != null
-                                ? NetworkImage(driverData["photoUrl"])
-                                : null,
-                            child: driverData["photoUrl"] == null
+                            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                            child: photoUrl == null
                                 ? const Icon(Icons.person, size: 18, color: Colors.grey)
                                 : null,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              driverData["name"]?.toString() ?? 'unknown'.tr(),
+                              driverName,
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -234,7 +326,7 @@ class _DriversDataListState extends State<DriversDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        driverData["phone"]?.toString() ?? '-',
+                        phone,
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                       ),
                     ),
@@ -243,7 +335,7 @@ class _DriversDataListState extends State<DriversDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        "${driverData["carModel"] ?? ''} ${driverData["carColor"] ?? ''}",
+                        carInfo,
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                       ),
                     ),
@@ -281,17 +373,11 @@ class _DriversDataListState extends State<DriversDataList> {
                         icon: const Icon(Icons.badge_outlined, color: AppColors.primary),
                         tooltip: "مشاهده مدارک",
                         onPressed: () {
-                          if (driverData["idCardUrl"] != null) {
-                            _showImageDialog(
-                              context,
-                              driverData["idCardUrl"],
-                              "مدرک راننده",
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("تصویری ثبت نشده است.")),
-                            );
-                          }
+                          _showImageDialog(
+                            context,
+                            driverData,
+                            "مدارک راننده: $driverName",
+                          );
                         },
                       ),
                     ),
@@ -310,13 +396,9 @@ class _DriversDataListState extends State<DriversDataList> {
                               elevation: 0,
                             ),
                             onPressed: () {
-                              _updateDriverStatus(
+                              _updateDriverApproval(
                                 driverId: doc.id,
-                                statusKey: "isApproved",
-                                statusValue: !isApproved,
-                                successMessage: isApproved
-                                    ? "وضعیت مدارک به 'در انتظار' تغییر یافت"
-                                    : "مدارک راننده با موفقیت تأیید شد",
+                                currentApproved: isApproved,
                               );
                             },
                             child: Text(
@@ -332,13 +414,9 @@ class _DriversDataListState extends State<DriversDataList> {
                             ),
                             tooltip: isBlocked ? "خروج از مسدودی" : "مسدود کردن راننده",
                             onPressed: () {
-                              _updateDriverStatus(
+                              _updateDriverBlockStatus(
                                 driverId: doc.id,
-                                statusKey: "isBlocked",
-                                statusValue: !isBlocked,
-                                successMessage: isBlocked
-                                    ? "راننده از حالت مسدود خارج شد"
-                                    : "راننده مسدود شد",
+                                currentBlocked: isBlocked,
                               );
                             },
                           ),
