@@ -13,10 +13,9 @@ class TripsDataList extends StatefulWidget {
 }
 
 class _TripsDataListState extends State<TripsDataList> {
-  // 📍 جریان دریافت سفرهای پایان‌یافته (ended) از Firestore
+  // 📍 جریان دریافت تمام درخواستی‌های سفر از Firestore
   final Stream<QuerySnapshot> _tripsStream = FirebaseFirestore.instance
       .collection("tripRequests")
-      .where("status", isEqualTo: "ended")
       .snapshots();
 
   // 🗺️ متد مسیریابی و نمایش مبدا و مقصد روی OpenStreetMap
@@ -35,7 +34,6 @@ class _TripsDataListState extends State<TripsDataList> {
       return;
     }
 
-    // ساخت URL مسیریابی در OpenStreetMap
     String osmUrl =
         "https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=$pickUpLat%2C$pickUpLng%3B$dropOffLat%2C$dropOffLng";
 
@@ -47,12 +45,21 @@ class _TripsDataListState extends State<TripsDataList> {
     }
   }
 
+  // 🗓️ تابع کمکی فرمت تاریخ
+  String _formatDateTime(dynamic dateTimeVal) {
+    if (dateTimeVal == null) return 'no_date'.tr();
+    if (dateTimeVal is Timestamp) {
+      DateTime dt = dateTimeVal.toDate();
+      return "${dt.year}/${dt.month}/${dt.day} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}";
+    }
+    return dateTimeVal.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: _tripsStream,
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshotData) {
-        // ---------------- ERROR HANDLERS ----------------
         if (snapshotData.hasError) {
           debugPrint("Error: ${snapshotData.error}");
           return _buildStateMessage(
@@ -79,27 +86,61 @@ class _TripsDataListState extends State<TripsDataList> {
           );
         }
 
-        // ---------------- DATA PARSING FROM FIRESTORE ----------------
-        var tripDocs = snapshotData.data!.docs;
+        // ----------------- فیلتر سفرهای پایان یافته -----------------
+        var allDocs = snapshotData.data!.docs;
+        var completedTrips = allDocs.where((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          String status = (data["status"] ?? '').toString().toLowerCase();
+          return status == "ended" || status == "completed" || status == "arrived";
+        }).toList();
 
-        // ---------------- LIST BUILDER ----------------
+        if (completedTrips.isEmpty) {
+          return _buildStateMessage(
+            icon: Icons.route_outlined,
+            message: 'no_completed_trips'.tr(),
+            color: Colors.grey.shade500,
+          );
+        }
+
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: tripDocs.length,
+          itemCount: completedTrips.length,
           padding: const EdgeInsets.only(bottom: 16),
           itemBuilder: (context, index) {
-            var doc = tripDocs[index];
+            var doc = completedTrips[index];
             Map<String, dynamic> tripData = doc.data() as Map<String, dynamic>;
 
+            // استخراج هوشمند اطلاعات
+            String tripId = tripData["tripID"]?.toString() ?? 
+                            tripData["tripId"]?.toString() ?? 
+                            doc.id.substring(0, doc.id.length > 8 ? 8 : doc.id.length);
+
+            String userName = tripData["userName"] ?? 
+                               tripData["passengerName"] ?? 
+                               tripData["name"] ?? 
+                               'unknown'.tr();
+
+            String driverName = tripData["driverName"] ?? 
+                                 tripData["driver_name"] ?? 
+                                 'unknown'.tr();
+
+            String carDetails = tripData["carDetails"] ?? 
+                                tripData["car_details"] ?? 
+                                tripData["driverDetails"]?["carModel"] ?? 
+                                'not_registered'.tr();
+
             // فرمت کرایه
-            var fareAmount = tripData["fareAmount"] ?? tripData["fare"];
+            var fareAmount = tripData["fareAmount"] ?? tripData["fare"] ?? tripData["price"];
             String fareText = fareAmount != null
                 ? "$fareAmount ${'afghani_currency'.tr()}"
                 : "0 ${'afghani_currency'.tr()}";
 
-            // استخراج مختصات مبدا و مقصد (پشتیبانی از GeoPoint و Map)
-            dynamic pickUpLat, pickUpLng, dropOffLat, dropOffLng;
+            // استخراج جامع مختصات مبدا و مقصد
+            dynamic pickUpLat = tripData["pickUpLat"] ?? tripData["originLat"];
+            dynamic pickUpLng = tripData["pickUpLng"] ?? tripData["originLng"];
+            dynamic dropOffLat = tripData["dropOffLat"] ?? tripData["destinationLat"];
+            dynamic dropOffLng = tripData["dropOffLng"] ?? tripData["destinationLng"];
 
             if (tripData["pickUpLatLng"] is Map) {
               pickUpLat = tripData["pickUpLatLng"]["latitude"];
@@ -116,6 +157,11 @@ class _TripsDataListState extends State<TripsDataList> {
               dropOffLat = (tripData["dropOffLatLng"] as GeoPoint).latitude;
               dropOffLng = (tripData["dropOffLatLng"] as GeoPoint).longitude;
             }
+
+            // تاریخ و زمان
+            String timeText = _formatDateTime(
+              tripData["publishDateTime"] ?? tripData["time"] ?? tripData["createdAt"]
+            );
 
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -139,7 +185,7 @@ class _TripsDataListState extends State<TripsDataList> {
                     CommonMethods.data(
                       2,
                       Text(
-                        tripData["tripID"]?.toString() ?? doc.id.substring(0, 8),
+                        tripId,
                         style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
@@ -152,7 +198,7 @@ class _TripsDataListState extends State<TripsDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        tripData["userName"]?.toString() ?? 'unknown'.tr(),
+                        userName,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
                       ),
                     ),
@@ -161,7 +207,7 @@ class _TripsDataListState extends State<TripsDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        tripData["driverName"]?.toString() ?? 'unknown'.tr(),
+                        driverName,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
                       ),
                     ),
@@ -170,7 +216,7 @@ class _TripsDataListState extends State<TripsDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        tripData["carDetails"]?.toString() ?? 'not_registered'.tr(),
+                        carDetails,
                         style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
                       ),
                     ),
@@ -179,9 +225,7 @@ class _TripsDataListState extends State<TripsDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        tripData["publishDateTime"]?.toString() ??
-                            tripData["time"]?.toString() ??
-                            'no_date'.tr(),
+                        timeText,
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                     ),
@@ -243,7 +287,6 @@ class _TripsDataListState extends State<TripsDataList> {
     );
   }
 
-  // ویجت نمایش پیام‌های حالت خالی و خطا
   Widget _buildStateMessage({
     required IconData icon,
     required String message,
