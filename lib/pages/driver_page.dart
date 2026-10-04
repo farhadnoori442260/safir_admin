@@ -23,6 +23,7 @@ class _DriverPageState extends State<DriverPage> {
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -144,11 +145,10 @@ class _DriverPageState extends State<DriverPage> {
               const SizedBox(height: 20),
 
               // ---------------- TABLE WITH HORIZONTAL SCROLL ----------------
-              // 👈 اضافه کردن اسکرول افقی برای جلوگیری از overflow در گوشی
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(
-                  width: 850, // تعیین حداقل عرض برای جا شدن کامل ستون‌ها
+                  width: 950, // افزایش عرض برای جاگیری درست دکمه‌ها و مدارک
                   child: Column(
                     children: [
                       // HEADER CARD
@@ -174,8 +174,9 @@ class _DriverPageState extends State<DriverPage> {
                       ),
                       const SizedBox(height: 12),
 
-                      // DATA LIST
+                      // DATA LIST (Key اضافه شد تا با تغییر فیلتر لیست اجباراً بازسازی شود)
                       DriversDataList(
+                        key: ValueKey("$_searchQuery-$_selectedFilter"),
                         searchQuery: _searchQuery,
                         filterStatus: _selectedFilter,
                       ),
