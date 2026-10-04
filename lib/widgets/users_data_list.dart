@@ -1,5 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 سویچ به Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:safir_admin/constants/app_colors.dart';
 import 'package:safir_admin/methods/common_methods.dart';
@@ -16,22 +16,27 @@ class _UsersDataListState extends State<UsersDataList> {
   final Stream<QuerySnapshot> _usersStream =
       FirebaseFirestore.instance.collection("users").snapshots();
 
-  // متد تغییر وضعیت مسدودی مسافر در Firestore
-  Future<void> _toggleBlockStatus(String userId, String currentStatus) async {
-    String newStatus = currentStatus == "yes" ? "no" : "yes";
+  // متد تغییر وضعیت مسدودی مسافر در Firestore (پشتیبانی کامل از تمام حالت‌ها)
+  Future<void> _toggleBlockStatus(String userId, bool isCurrentlyBlocked) async {
+    bool newBlockState = !isCurrentlyBlocked;
+    
     try {
       await FirebaseFirestore.instance
           .collection("users")
           .doc(userId)
-          .update({'blockStatus': newStatus});
+          .update({
+        'blockStatus': newBlockState ? "yes" : "no",
+        'isBlocked': newBlockState,
+        'status': newBlockState ? "blocked" : "active",
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              newStatus == "yes" ? 'user_blocked_msg'.tr() : 'user_unblocked_msg'.tr(),
+              newBlockState ? 'user_blocked_msg'.tr() : 'user_unblocked_msg'.tr(),
             ),
-            backgroundColor: newStatus == "yes" ? Colors.red : Colors.green,
+            backgroundColor: newBlockState ? Colors.red : Colors.green,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -94,8 +99,26 @@ class _UsersDataListState extends State<UsersDataList> {
             Map<String, dynamic> userData = doc.data() as Map<String, dynamic>;
             String userId = doc.id;
 
-            String blockStatus = userData["blockStatus"] ?? "no";
-            bool isBlocked = blockStatus == "yes";
+            // 📍 استخراج هوشمند نام کاربر
+            String name = userData["name"] ?? 
+                           userData["userName"] ?? 
+                           userData["full_name"] ?? 
+                           userData["fullName"] ?? 
+                           'unknown'.tr();
+
+            // 📍 بررسی هوشمند وضعیت مسدودی
+            var blockVal = userData["blockStatus"] ?? userData["status"] ?? userData["isBlocked"];
+            bool isBlocked = blockVal == "yes" || blockVal == "blocked" || blockVal == true;
+
+            // 📍 استخراج شماره تماس
+            String phone = userData["phone"] ?? 
+                           userData["phoneNumber"] ?? 
+                           userData["phone_number"] ?? 
+                           userData["mobile"] ?? 
+                           'not_registered'.tr();
+
+            // 📍 استخراج ایمیل
+            String email = userData["email"] ?? 'not_registered'.tr();
 
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -119,7 +142,7 @@ class _UsersDataListState extends State<UsersDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        userData["name"]?.toString() ?? 'unknown'.tr(),
+                        name,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13.5,
@@ -132,7 +155,7 @@ class _UsersDataListState extends State<UsersDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        userData["email"]?.toString() ?? 'not_registered'.tr(),
+                        email,
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade700,
@@ -144,7 +167,7 @@ class _UsersDataListState extends State<UsersDataList> {
                     CommonMethods.data(
                       1,
                       Text(
-                        userData["phone"]?.toString() ?? userData["phoneNumber"]?.toString() ?? 'not_registered'.tr(),
+                        phone,
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -169,7 +192,7 @@ class _UsersDataListState extends State<UsersDataList> {
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                           ),
-                          onPressed: () => _toggleBlockStatus(userId, blockStatus),
+                          onPressed: () => _toggleBlockStatus(userId, isBlocked),
                           child: Text(
                             isBlocked ? 'unblock_action'.tr() : 'block_action'.tr(),
                             style: const TextStyle(
