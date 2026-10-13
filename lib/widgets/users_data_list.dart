@@ -23,12 +23,11 @@ class _UsersDataListState extends State<UsersDataList> {
       stream: _usersStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _buildStateMessage(
-            icon: Icons.error_outline_rounded,
-            message: 'خطا در خواندن کاربران:
-${snapshot.error}',
-            color: Colors.red.shade600,
-          );
+  return _buildStateMessage(
+    icon: Icons.error_outline_rounded,
+    message: 'خطا در خواندن کاربران: ${snapshot.error}',
+    color: Colors.red.shade600,
+  );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
