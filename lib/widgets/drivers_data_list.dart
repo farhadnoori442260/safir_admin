@@ -687,10 +687,9 @@ class _DriversDataListState extends State<DriversDataList> {
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در به‌روزرسانی راننده:
-$e',
-        Colors.red,
-      );
+  'خطا در به‌روزرسانی راننده: $e',
+  Colors.red,
+);
     } finally {
       if (mounted) {
         setState(() {
@@ -743,10 +742,9 @@ $e',
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در تغییر وضعیت مسدودی:
-$e',
-        Colors.red,
-      );
+  'خطا در تغییر وضعیت مسدودی: $e',
+  Colors.red,
+);
     } finally {
       if (mounted) {
         setState(() {
