@@ -437,12 +437,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
       stream: _notificationsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _buildStateMessage(
-            icon: Icons.error_outline_rounded,
-            message: 'خطا در دریافت تاریخچه:
-${snapshot.error}',
-            color: Colors.red.shade600,
-          );
+  return _buildStateMessage(
+    icon: Icons.error_outline_rounded,
+    message: 'خطا در دریافت تاریخچه: ${snapshot.error}',
+    color: Colors.red.shade600,
+  );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
