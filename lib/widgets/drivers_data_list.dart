@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
@@ -30,11 +29,11 @@ class _DriversDataListState extends State<DriversDataList> {
       stream: _driversStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-  return _buildStateMessage(
-    icon: Icons.error_outline_rounded,
-    message: 'خطا در خواندن رانندگان: ${snapshot.error}',
-    color: Colors.red.shade600,
-  );
+          return _buildStateMessage(
+            icon: Icons.error_outline_rounded,
+            message: 'خطا در خواندن رانندگان: ${snapshot.error}',
+            color: Colors.red.shade600,
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -90,35 +89,18 @@ class _DriversDataListState extends State<DriversDataList> {
   ) {
     final data = document.data();
 
-    final name = _readText(
-      data,
-      [
-        'name',
-        'driver_name',
-        'driverName',
-        'fullName',
-        'fullname',
-        'username',
-      ],
-    ).toLowerCase();
+    final name = _driverName(data).toLowerCase();
+    final phone = _firstText(data, [
+      'phoneNumber',
+      'phone',
+      'phone_number',
+      'mobile',
+    ]).toLowerCase();
 
-    final phone = _readText(
-      data,
-      [
-        'phone',
-        'phoneNumber',
-        'phone_number',
-        'mobile',
-      ],
-    ).toLowerCase();
-
-    final email = _readText(
-      data,
-      [
-        'email',
-        'emailAddress',
-      ],
-    ).toLowerCase();
+    final email = _firstText(data, [
+      'email',
+      'emailAddress',
+    ]).toLowerCase();
 
     final query = widget.searchQuery.trim().toLowerCase();
 
@@ -130,7 +112,7 @@ class _DriversDataListState extends State<DriversDataList> {
 
     final status = _driverStatus(data);
 
-    bool matchesStatus = true;
+    bool matchesStatus;
 
     switch (widget.filterStatus) {
       case 'pending':
@@ -156,78 +138,82 @@ class _DriversDataListState extends State<DriversDataList> {
   ) {
     final data = document.data();
 
-    final name = _readText(
+    final driverName = _driverName(
       data,
-      [
-        'name',
-        'driver_name',
-        'driverName',
-        'fullName',
-        'fullname',
-        'username',
-      ],
       fallback: 'راننده ناشناس',
     );
 
-    final phone = _readText(
+    final phone = _firstText(
       data,
       [
-        'phone',
         'phoneNumber',
+        'phone',
         'phone_number',
         'mobile',
       ],
       fallback: '-',
     );
 
-    final carModel = _readText(
-      data,
+    final vehicleInfo = _vehicleInfo(data);
+
+    final vehicleType = _vehicleTypeLabel(
+      _firstTextFromMap(vehicleInfo, ['type']),
+    );
+
+    final vehicleBrand = _firstTextFromMap(
+      vehicleInfo,
       [
+        'brand',
+        'model',
         'carModel',
-        'car_model',
       ],
     );
 
-    final carColor = _readText(
-      data,
+    final vehicleColor = _firstTextFromMap(
+      vehicleInfo,
       [
+        'color',
         'carColor',
-        'car_color',
       ],
     );
 
-    final carDetails = data['carDetails'];
+    final plate = _buildPlateText(vehicleInfo);
 
-    final nestedCarModel = carDetails is Map
-        ? _readMapText(carDetails, ['carModel', 'model', 'name'])
-        : '';
-
-    final nestedCarColor = carDetails is Map
-        ? _readMapText(carDetails, ['carColor', 'color'])
-        : '';
-
-    final carInfo = [
-      if (carModel.isNotEmpty) carModel,
-      if (carModel.isEmpty && nestedCarModel.isNotEmpty) nestedCarModel,
-      if (carColor.isNotEmpty) carColor,
-      if (carColor.isEmpty && nestedCarColor.isNotEmpty) nestedCarColor,
-    ].join(' ').trim();
+    final vehicleDetails = <String>[
+      if (vehicleType.isNotEmpty) vehicleType,
+      if (vehicleBrand.isNotEmpty) vehicleBrand,
+      if (vehicleColor.isNotEmpty) vehicleColor,
+      if (plate.isNotEmpty) plate,
+    ].join(' • ');
 
     final status = _driverStatus(data);
-    final photoUrl = _readNullableText(
+
+    final profileImageUrl = _firstNullableText(
       data,
       [
+        'profilePicture',
+        'profileImage',
+        'profileImageUrl',
+        'photo',
         'photoUrl',
         'photo_url',
-        'profileImage',
-        'profile_image',
-        'user_image',
         'imageUrl',
       ],
     );
 
+    final vehicleImageUrl = _firstNullableTextFromMap(
+      vehicleInfo,
+      [
+        'vehiclePicture',
+        'vehicleImage',
+        'vehicleImageUrl',
+        'carPhotoUrl',
+        'car_photo_url',
+      ],
+    );
+
     return Container(
-      constraints: const BoxConstraints(minHeight: 76),
+      constraints: const BoxConstraints(minHeight: 82),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -254,8 +240,8 @@ class _DriversDataListState extends State<DriversDataList> {
             _dataCell(
               flex: 17,
               child: _buildDriverIdentity(
-                name: name,
-                photoUrl: photoUrl,
+                name: driverName,
+                photoUrl: profileImageUrl,
               ),
             ),
             _dataCell(
@@ -266,10 +252,11 @@ class _DriversDataListState extends State<DriversDataList> {
               ),
             ),
             _dataCell(
-              flex: 12,
-              child: _buildSimpleText(
-                carInfo.isEmpty ? '-' : carInfo,
-                icon: Icons.directions_car_outlined,
+              flex: 16,
+              child: _buildVehicleCell(
+                type: vehicleType,
+                details: vehicleDetails,
+                vehicleImageUrl: vehicleImageUrl,
               ),
             ),
             _dataCell(
@@ -288,7 +275,7 @@ class _DriversDataListState extends State<DriversDataList> {
                   _showDocumentsDialog(
                     context: context,
                     data: data,
-                    driverName: name,
+                    driverName: driverName,
                   );
                 },
               ),
@@ -374,7 +361,7 @@ class _DriversDataListState extends State<DriversDataList> {
       child: ClipOval(
         child: hasPhoto
             ? Image.network(
-                photoUrl,
+                photoUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
                   return const Icon(
@@ -389,6 +376,84 @@ class _DriversDataListState extends State<DriversDataList> {
                 color: AppColors.primary,
                 size: 21,
               ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleCell({
+    required String type,
+    required String details,
+    required String? vehicleImageUrl,
+  }) {
+    return Row(
+      children: [
+        _buildVehicleAvatar(vehicleImageUrl, type),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            details.isEmpty ? 'وسیلهٔ نقلیه' : details,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 10.5,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVehicleAvatar(
+    String? imageUrl,
+    String vehicleType,
+  ) {
+    final hasImage = imageUrl != null && imageUrl.trim().isNotEmpty;
+
+    if (hasImage) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Image.network(
+          imageUrl!,
+          width: 42,
+          height: 42,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _vehicleIconBox(vehicleType);
+          },
+        ),
+      );
+    }
+
+    return _vehicleIconBox(vehicleType);
+  }
+
+  Widget _vehicleIconBox(String vehicleType) {
+    IconData icon;
+
+    switch (vehicleType) {
+      case 'موترسایکل':
+        icon = Icons.two_wheeler_rounded;
+        break;
+      case 'باربری':
+        icon = Icons.local_shipping_rounded;
+        break;
+      default:
+        icon = Icons.local_taxi_rounded;
+    }
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Icon(
+        icon,
+        color: AppColors.primary,
+        size: 23,
       ),
     );
   }
@@ -422,8 +487,6 @@ class _DriversDataListState extends State<DriversDataList> {
 
   Widget _buildStatusChip(_DriverStatus status) {
     final color = _statusColor(status);
-    final label = _statusLabel(status);
-    final icon = _statusIcon(status);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -437,11 +500,15 @@ class _DriversDataListState extends State<DriversDataList> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
+          Icon(
+            _statusIcon(status),
+            size: 14,
+            color: color,
+          ),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              label,
+              _statusLabel(status),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -592,7 +659,7 @@ class _DriversDataListState extends State<DriversDataList> {
     if (confirmed == true) {
       await _updateDriverBlockStatus(
         driverId: document.id,
-        currentBlocked: currentlyBlocked,
+        currentlyBlocked: currentlyBlocked,
       );
     }
   }
@@ -687,9 +754,9 @@ class _DriversDataListState extends State<DriversDataList> {
       if (!mounted) return;
 
       _showSnackBar(
-  'خطا در به‌روزرسانی راننده: $e',
-  Colors.red,
-);
+        'خطا در به‌روزرسانی راننده: $e',
+        Colors.red,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -701,11 +768,11 @@ class _DriversDataListState extends State<DriversDataList> {
 
   Future<void> _updateDriverBlockStatus({
     required String driverId,
-    required bool currentBlocked,
+    required bool currentlyBlocked,
   }) async {
     if (_isUpdating) return;
 
-    final newBlocked = !currentBlocked;
+    final newBlocked = !currentlyBlocked;
 
     setState(() {
       _isUpdating = true;
@@ -742,9 +809,9 @@ class _DriversDataListState extends State<DriversDataList> {
       if (!mounted) return;
 
       _showSnackBar(
-  'خطا در تغییر وضعیت مسدودی: $e',
-  Colors.red,
-);
+        'خطا در تغییر وضعیت مسدودی: $e',
+        Colors.red,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -859,24 +926,12 @@ class _DriversDataListState extends State<DriversDataList> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.image_outlined,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
             ),
           ),
           ClipRRect(
@@ -934,57 +989,141 @@ class _DriversDataListState extends State<DriversDataList> {
     Map<String, dynamic> data,
   ) {
     final documents = <_DriverDocument>[];
+    final vehicleInfo = _vehicleInfo(data);
 
     _addDocument(
       documents,
-      data,
-      title: 'کارت هویت',
-      keys: [
-        'idCardUrl',
-        'id_card_url',
-        'identityCardUrl',
-        'identity_card_url',
-      ],
+      _firstNullableText(
+        data,
+        [
+          'profilePicture',
+          'profileImage',
+          'profileImageUrl',
+          'photo',
+          'photoUrl',
+          'photo_url',
+          'imageUrl',
+        ],
+      ),
+      'عکس پروفایل راننده',
     );
 
     _addDocument(
       documents,
-      data,
-      title: 'گواهینامه',
-      keys: [
-        'licenseUrl',
-        'license_url',
-        'drivingLicenseUrl',
-        'driving_license_url',
-      ],
+      _firstNullableText(
+        data,
+        [
+          'cnicFrontImage',
+          'cnicFrontImageUrl',
+          'idCardFrontImage',
+          'identityCardFrontImage',
+          'idCardUrl',
+        ],
+      ),
+      'روی کارت هویت',
     );
 
     _addDocument(
       documents,
-      data,
-      title: 'عکس خودرو',
-      keys: [
-        'carPhotoUrl',
-        'car_photo_url',
-        'vehiclePhotoUrl',
-        'vehicle_photo_url',
-      ],
+      _firstNullableText(
+        data,
+        [
+          'cnicBackImage',
+          'cnicBackImageUrl',
+          'idCardBackImage',
+          'identityCardBackImage',
+        ],
+      ),
+      'پشت کارت هویت',
     );
 
     _addDocument(
       documents,
-      data,
-      title: 'عکس پروفایل',
-      keys: [
-        'photoUrl',
-        'photo_url',
-        'profileImage',
-        'profile_image',
-        'user_image',
-      ],
+      _firstNullableText(
+        data,
+        [
+          'driverFaceWithCnic',
+          'driverFaceWithCnicImage',
+          'cnicWithSelfieImage',
+          'selfieWithCnic',
+        ],
+      ),
+      'عکس سلفی با کارت هویت',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'drivingLicenseFrontImage',
+          'drivingLicenseFrontImageUrl',
+          'licenseFrontImage',
+          'drivingLicenseUrl',
+          'licenseUrl',
+        ],
+      ),
+      'روی گواهینامه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'drivingLicenseBackImage',
+          'drivingLicenseBackImageUrl',
+          'licenseBackImage',
+        ],
+      ),
+      'پشت گواهینامه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'vehiclePicture',
+          'vehicleImage',
+          'vehicleImageUrl',
+          'carPhotoUrl',
+          'car_photo_url',
+        ],
+      ),
+      'عکس وسیلهٔ نقلیه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'registrationCertificateFrontImage',
+          'vehicleRegistrationFrontImage',
+          'registrationFrontImage',
+          'vehicleRegistrationFrontImageUrl',
+        ],
+      ),
+      'روی سند وسیلهٔ نقلیه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'registrationCertificateBackImage',
+          'vehicleRegistrationBackImage',
+          'registrationBackImage',
+          'vehicleRegistrationBackImageUrl',
+        ],
+      ),
+      'پشت سند وسیلهٔ نقلیه',
     );
 
     final uniqueUrls = <String>{};
+
     return documents.where((document) {
       return uniqueUrls.add(document.url);
     }).toList();
@@ -992,64 +1131,155 @@ class _DriversDataListState extends State<DriversDataList> {
 
   void _addDocument(
     List<_DriverDocument> documents,
+    String? url,
+    String title,
+  ) {
+    if (url == null || url.trim().isEmpty) return;
+
+    documents.add(
+      _DriverDocument(
+        title: title,
+        url: url.trim(),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _vehicleInfo(
+    Map<String, dynamic> data,
+  ) {
+    final value = data['vehicleInfo'];
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  String _driverName(
     Map<String, dynamic> data, {
-    required String title,
-    required List<String> keys,
+    String fallback = '',
   }) {
-    final url = _readNullableText(data, keys);
+    final firstName = _firstText(
+      data,
+      [
+        'firstName',
+        'firstname',
+        'first_name',
+      ],
+    );
 
-    if (url != null && url.isNotEmpty) {
-      documents.add(
-        _DriverDocument(
-          title: title,
-          url: url,
-        ),
-      );
-    }
-  }
+    final secondName = _firstText(
+      data,
+      [
+        'secondName',
+        'lastName',
+        'lastname',
+        'last_name',
+        'surname',
+      ],
+    );
 
-  _DriverStatus _driverStatus(Map<String, dynamic> data) {
-    if (_isBlocked(data)) {
-      return _DriverStatus.blocked;
-    }
+    final combined = '$firstName $secondName'.trim();
 
-    if (_isApproved(data)) {
-      return _DriverStatus.approved;
-    }
-
-    return _DriverStatus.pending;
-  }
-
-  bool _isApproved(Map<String, dynamic> data) {
-    final value = data['isApproved'];
-
-    if (value == true) return true;
-
-    final text = value?.toString().trim().toLowerCase();
-
-    if (text == 'true' || text == 'approved' || text == 'yes') {
-      return true;
+    if (combined.isNotEmpty) {
+      return combined;
     }
 
-    final status = data['status']?.toString().trim().toLowerCase();
-
-    return status == 'approved';
+    return _firstText(
+      data,
+      [
+        'name',
+        'driver_name',
+        'driverName',
+        'fullName',
+        'fullname',
+        'username',
+      ],
+      fallback: fallback,
+    );
   }
 
-  bool _isBlocked(Map<String, dynamic> data) {
-    final value = data['isBlocked'];
+  String _buildPlateText(
+    Map<String, dynamic> vehicleInfo,
+  ) {
+    final province = _firstTextFromMap(
+      vehicleInfo,
+      ['plateProvince'],
+    );
 
-    if (value == true) return true;
+    final category = _firstTextFromMap(
+      vehicleInfo,
+      ['plateCategory'],
+    );
 
-    final blockStatus = data['blockStatus']?.toString().trim().toLowerCase();
-    final status = data['status']?.toString().trim().toLowerCase();
+    final plateType = _firstTextFromMap(
+      vehicleInfo,
+      ['plateType'],
+    );
 
-    return blockStatus == 'yes' ||
-        blockStatus == 'blocked' ||
-        status == 'blocked';
+    final number = _firstTextFromMap(
+      vehicleInfo,
+      [
+        'registrationPlateNumber',
+        'plateNumber',
+        'carNumber',
+      ],
+    );
+
+    final parts = <String>[
+      if (province.isNotEmpty) province,
+      if (category.isNotEmpty) category,
+      if (number.isNotEmpty) number,
+    ];
+
+    if (parts.isEmpty) {
+      return '';
+    }
+
+    final result = parts.join(' - ');
+
+    if (plateType.isNotEmpty) {
+      return '$result ($plateType)';
+    }
+
+    return result;
   }
 
-  String _readText(
+  String _vehicleTypeLabel(String rawType) {
+    final value = rawType.trim().toLowerCase();
+
+    if (value.isEmpty) {
+      return 'وسیلهٔ نقلیه';
+    }
+
+    if (value == 'bike' ||
+        value == 'motorbike' ||
+        value == 'motorcycle' ||
+        value == 'موترسایکل' ||
+        value == 'موتورسیکلت') {
+      return 'موترسایکل';
+    }
+
+    if (value == 'cargo' ||
+        value == 'truck' ||
+        value == 'freight' ||
+        value == 'باربری') {
+      return 'باربری';
+    }
+
+    if (value == 'car' ||
+        value == 'taxi' ||
+        value == 'auto' ||
+        value == 'موتر' ||
+        value == 'تاکسی') {
+      return 'تاکسی';
+    }
+
+    return rawType.trim();
+  }
+
+  String _firstText(
     Map<String, dynamic> data,
     List<String> keys, {
     String fallback = '',
@@ -1066,46 +1296,104 @@ class _DriversDataListState extends State<DriversDataList> {
       if (value is num || value is bool) {
         return value.toString();
       }
+    }
 
-      if (value is Map) {
-        final nested = _readMapText(
-          value,
-          ['name', 'title', 'address', 'value'],
-        );
+    return fallback;
+  }
 
-        if (nested.isNotEmpty) {
-          return nested;
-        }
+  String _firstTextFromMap(
+    Map<String, dynamic> data,
+    List<String> keys, {
+    String fallback = '',
+  }) {
+    for (final key in keys) {
+      final value = data[key];
+
+      if (value == null) continue;
+
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+
+      if (value is num || value is bool) {
+        return value.toString();
       }
     }
 
     return fallback;
   }
 
-  String _readMapText(
-    Map<dynamic, dynamic> data,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value != null && value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    }
-
-    return '';
-  }
-
-  String? _readNullableText(
+  String? _firstNullableText(
     Map<String, dynamic> data,
     List<String> keys,
   ) {
-    final value = _readText(data, keys);
+    final value = _firstText(data, keys);
     return value.isEmpty ? null : value;
   }
 
-  Color _statusColor(_DriverStatus status) {
+  String? _firstNullableTextFromMap(
+    Map<String, dynamic> data,
+    List<String> keys,
+  ) {
+    final value = _firstTextFromMap(data, keys);
+    return value.isEmpty ? null : value;
+  }
+
+  _DriverStatus _driverStatus(
+    Map<String, dynamic> data,
+  ) {
+    if (_isBlocked(data)) {
+      return _DriverStatus.blocked;
+    }
+
+    if (_isApproved(data)) {
+      return _DriverStatus.approved;
+    }
+
+    return _DriverStatus.pending;
+  }
+
+  bool _isApproved(
+    Map<String, dynamic> data,
+  ) {
+    final value = data['isApproved'];
+
+    if (value == true) return true;
+
+    final text = value?.toString().trim().toLowerCase();
+
+    if (text == 'true' ||
+        text == 'approved' ||
+        text == 'yes') {
+      return true;
+    }
+
+    final status = data['status']?.toString().trim().toLowerCase();
+
+    return status == 'approved';
+  }
+
+  bool _isBlocked(
+    Map<String, dynamic> data,
+  ) {
+    final value = data['isBlocked'];
+
+    if (value == true) return true;
+
+    final blockStatus =
+        data['blockStatus']?.toString().trim().toLowerCase();
+
+    final status =
+        data['status']?.toString().trim().toLowerCase();
+
+    return blockStatus == 'yes' ||
+        blockStatus == 'blocked' ||
+        status == 'blocked';
+  }
+
+  Color _statusColor(
+    _DriverStatus status,
+  ) {
     switch (status) {
       case _DriverStatus.approved:
         return Colors.green;
@@ -1116,7 +1404,9 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
-  String _statusLabel(_DriverStatus status) {
+  String _statusLabel(
+    _DriverStatus status,
+  ) {
     switch (status) {
       case _DriverStatus.approved:
         return 'تأیید شده';
@@ -1127,7 +1417,9 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
-  IconData _statusIcon(_DriverStatus status) {
+  IconData _statusIcon(
+    _DriverStatus status,
+  ) {
     switch (status) {
       case _DriverStatus.approved:
         return Icons.verified_rounded;
@@ -1138,7 +1430,541 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
-  void _showSnackBar(String message, Color color) {
+  Future<bool?> _showConfirmDialog({
+    required BuildContext context,
+    required String title,
+    required String message,
+    required String confirmText,
+    required Color color,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text(
+                'انصراف',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: Text(confirmText),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmApprovalChange({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> document,
+    required bool currentlyApproved,
+  }) async {
+    final action = currentlyApproved ? 'لغو تأیید' : 'تأیید';
+
+    final confirmed = await _showConfirmDialog(
+      context: context,
+      title: '$action مدارک',
+      message: currentlyApproved
+          ? 'آیا می‌خواهید تأیید مدارک این راننده لغو شود؟'
+          : 'آیا مدارک این راننده را تأیید می‌کنید؟',
+      confirmText: action,
+      color: currentlyApproved ? Colors.orange : Colors.green,
+    );
+
+    if (confirmed == true) {
+      await _updateDriverApproval(
+        driverId: document.id,
+        currentApproved: currentlyApproved,
+      );
+    }
+  }
+
+  Future<void> _confirmBlockChange({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> document,
+    required bool currentlyBlocked,
+  }) async {
+    final action =
+        currentlyBlocked ? 'خروج از مسدودی' : 'مسدود کردن';
+
+    final confirmed = await _showConfirmDialog(
+      context: context,
+      title: action,
+      message: currentlyBlocked
+          ? 'آیا می‌خواهید این راننده از حالت مسدود خارج شود؟'
+          : 'آیا مطمئن هستید که می‌خواهید این راننده را مسدود کنید؟',
+      confirmText: action,
+      color: currentlyBlocked ? Colors.green : Colors.red,
+    );
+
+    if (confirmed == true) {
+      await _updateDriverBlockStatus(
+        driverId: document.id,
+        currentlyBlocked: currentlyBlocked,
+      );
+    }
+  }
+
+  Future<void> _updateDriverApproval({
+    required String driverId,
+    required bool currentApproved,
+  }) async {
+    if (_isUpdating) return;
+
+    final newApproved = !currentApproved;
+
+    setState(() {
+      _isUpdating = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('drivers')
+          .doc(driverId)
+          .update({
+        'isApproved': newApproved,
+        'status': newApproved ? 'approved' : 'pending',
+        'newDriverStatus':
+            newApproved ? 'approved' : 'pending',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      _showSnackBar(
+        newApproved
+            ? 'مدارک راننده با موفقیت تأیید شد'
+            : 'تأیید مدارک راننده لغو شد',
+        Colors.green,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showSnackBar(
+        'خطا در به‌روزرسانی راننده: $e',
+        Colors.red,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _updateDriverBlockStatus({
+    required String driverId,
+    required bool currentlyBlocked,
+  }) async {
+    if (_isUpdating) return;
+
+    final newBlocked = !currentlyBlocked;
+
+    setState(() {
+      _isUpdating = true;
+    });
+
+    try {
+      final reference = FirebaseFirestore.instance
+          .collection('drivers')
+          .doc(driverId);
+
+      final currentDocument = await reference.get();
+      final currentData = currentDocument.data() ?? {};
+      final currentApproved = _isApproved(currentData);
+
+      await reference.update({
+        'isBlocked': newBlocked,
+        'blockStatus': newBlocked ? 'yes' : 'no',
+        'status': newBlocked
+            ? 'blocked'
+            : (currentApproved ? 'approved' : 'pending'),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      _showSnackBar(
+        newBlocked
+            ? 'راننده با موفقیت مسدود شد'
+            : 'راننده از حالت مسدود خارج شد',
+        newBlocked ? Colors.red : Colors.green,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showSnackBar(
+        'خطا در تغییر وضعیت مسدودی: $e',
+        Colors.red,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+        });
+      }
+    }
+  }
+
+  void _showDocumentsDialog({
+    required BuildContext context,
+    required Map<String, dynamic> data,
+    required String driverName,
+  }) {
+    final documents = _collectDocuments(data);
+
+    if (documents.isEmpty) {
+      _showSnackBar(
+        'هیچ تصویری برای مدارک این راننده ثبت نشده است.',
+        Colors.orange,
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 620,
+              maxHeight: 720,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.folder_shared_rounded,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'مدارک راننده: $driverName',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'بستن',
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: documents.length,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 14),
+                      itemBuilder: (context, index) {
+                        final item = documents[index];
+
+                        return _buildDocumentCard(
+                          title: item.title,
+                          url: item.url,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDocumentCard({
+    required String title,
+    required String url,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(16),
+            ),
+            child: Image.network(
+              url,
+              width: double.infinity,
+              height: 245,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+
+                return const SizedBox(
+                  height: 245,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  height: 245,
+                  color: Colors.grey.shade200,
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.broken_image_outlined,
+                          size: 42,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'تصویر قابل نمایش نیست',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<_DriverDocument> _collectDocuments(
+    Map<String, dynamic> data,
+  ) {
+    final documents = <_DriverDocument>[];
+    final vehicleInfo = _vehicleInfo(data);
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'profilePicture',
+          'profileImage',
+          'profileImageUrl',
+          'photo',
+          'photoUrl',
+          'photo_url',
+          'imageUrl',
+        ],
+      ),
+      'عکس پروفایل راننده',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'cnicFrontImage',
+          'cnicFrontImageUrl',
+          'idCardFrontImage',
+          'identityCardFrontImage',
+          'idCardUrl',
+        ],
+      ),
+      'روی کارت هویت',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'cnicBackImage',
+          'cnicBackImageUrl',
+          'idCardBackImage',
+          'identityCardBackImage',
+        ],
+      ),
+      'پشت کارت هویت',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'driverFaceWithCnic',
+          'driverFaceWithCnicImage',
+          'cnicWithSelfieImage',
+          'selfieWithCnic',
+        ],
+      ),
+      'عکس سلفی با کارت هویت',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'drivingLicenseFrontImage',
+          'drivingLicenseFrontImageUrl',
+          'licenseFrontImage',
+          'drivingLicenseUrl',
+          'licenseUrl',
+        ],
+      ),
+      'روی گواهینامه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableText(
+        data,
+        [
+          'drivingLicenseBackImage',
+          'drivingLicenseBackImageUrl',
+          'licenseBackImage',
+        ],
+      ),
+      'پشت گواهینامه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'vehiclePicture',
+          'vehicleImage',
+          'vehicleImageUrl',
+          'carPhotoUrl',
+          'car_photo_url',
+        ],
+      ),
+      'عکس وسیلهٔ نقلیه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'registrationCertificateFrontImage',
+          'vehicleRegistrationFrontImage',
+          'registrationFrontImage',
+          'vehicleRegistrationFrontImageUrl',
+        ],
+      ),
+      'روی سند وسیلهٔ نقلیه',
+    );
+
+    _addDocument(
+      documents,
+      _firstNullableTextFromMap(
+        vehicleInfo,
+        [
+          'registrationCertificateBackImage',
+          'vehicleRegistrationBackImage',
+          'registrationBackImage',
+          'vehicleRegistrationBackImageUrl',
+        ],
+      ),
+      'پشت سند وسیلهٔ نقلیه',
+    );
+
+    final uniqueUrls = <String>{};
+
+    return documents.where((document) {
+      return uniqueUrls.add(document.url);
+    }).toList();
+  }
+
+  void _addDocument(
+    List<_DriverDocument> documents,
+    String? url,
+    String title,
+  ) {
+    if (url == null || url.trim().isEmpty) return;
+
+    documents.add(
+      _DriverDocument(
+        title: title,
+        url: url.trim(),
+      ),
+    );
+  }
+
+  void _showSnackBar(
+    String message,
+    Color color,
+  ) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -1172,7 +1998,11 @@ class _DriversDataListState extends State<DriversDataList> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 44, color: color),
+          Icon(
+            icon,
+            size: 44,
+            color: color,
+          ),
           const SizedBox(height: 13),
           SelectableText(
             message,
