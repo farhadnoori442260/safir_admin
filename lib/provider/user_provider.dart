@@ -1,27 +1,118 @@
-import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
-class UserProvider with ChangeNotifier {
-  // ارجاع به شاخه کاربران در فایربیس سفیر
-  final DatabaseReference _usersRef =
-      FirebaseDatabase.instance.ref().child("users");
+class UserProvider extends ChangeNotifier {
+  final FirebaseFirestore _firestore;
 
-  /// متد تغییر وضعیت مسدودیت مسافر (بلاک / آنبلاک)
-  Future<bool> toggleBlockStatus(String userId, String? currentStatus) async {
-    // تبدیل وضعیت: اگر "no" بود به "yes" (مسدود) و بالعکس
-    String newStatus = currentStatus == "no" ? "yes" : "no";
+  UserProvider({
+    FirebaseFirestore? firestore,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  bool _isUpdating = false;
+  bool get isUpdating => _isUpdating;
+
+  String? _errorMessage;
+  String? get errorMessage => _errorMessage;
+
+  Future<bool> toggleBlockStatus({
+    required String userId,
+    required bool currentBlocked,
+  }) async {
+    if (_isUpdating) {
+      return false;
+    }
+
+    _isUpdating = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final newBlocked = !currentBlocked;
 
     try {
-      // به‌روزرسانی در شاخه کاربران دیتابیس فایربیس سفیر
-      await _usersRef.child(userId).update({
-        "blockStatus": newStatus,
+      final userReference = _firestore.collection('users').doc(userId);
+      final userSnapshot = await userReference.get();
+
+      if (!userSnapshot.exists) {
+        _errorMessage = 'کاربر موردنظر یافت نشد.';
+        return false;
+      }
+
+      final userData = userSnapshot.data() ?? {};
+      final previousStatus = _readText(
+        userData,
+        [
+          'status',
+          'accountStatus',
+          'account_status',
+        ],
+        fallback: 'active',
+      );
+
+      await userReference.update({
+        'blockStatus': newBlocked ? 'yes' : 'no',
+        'isBlocked': newBlocked,
+        'status': newBlocked
+            ? 'blocked'
+            : _restoreStatus(previousStatus),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      notifyListeners(); // به‌روزرسانی هوشمند ویجت‌های متصل به این پرووایدر
-      return true; // عملیات موفقیت‌آمیز بود
+      return true;
+    } on FirebaseException catch (error) {
+      debugPrint(
+        'Firestore error while changing user block status: '
+        '${error.code} - ${error.message}',
+      );
+
+      _errorMessage = error.message ?? error.code;
+      return false;
     } catch (error) {
-      debugPrint("خطا در تغییر وضعیت مسدودیت مسافر: $error");
-      return false; // عملیات با خطا مواجه شد
+      debugPrint(
+        'Unknown error while changing user block status: $error',
+      );
+
+      _errorMessage = error.toString();
+      return false;
+    } finally {
+      _isUpdating = false;
+      notifyListeners();
     }
+  }
+
+  String _restoreStatus(String previousStatus) {
+    final normalized = previousStatus.trim().toLowerCase();
+
+    if (normalized.isEmpty || normalized == 'blocked') {
+      return 'active';
+    }
+
+    return previousStatus;
+  }
+
+  String _readText(
+    Map<String, dynamic> data,
+    List<String> keys, {
+    String fallback = '',
+  }) {
+    for (final key in keys) {
+      final value = data[key];
+
+      if (value == null) continue;
+
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+
+      if (value is num || value is bool) {
+        return value.toString();
+      }
+    }
+
+    return fallback;
+  }
+
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
   }
 }
