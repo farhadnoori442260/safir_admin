@@ -13,7 +13,11 @@ import 'package:safir_admin/pages/user_page.dart';
 
 class SideNavigationDrawer extends StatefulWidget {
   final Locale currentLocale;
-  const SideNavigationDrawer({super.key, required this.currentLocale});
+
+  const SideNavigationDrawer({
+    super.key,
+    required this.currentLocale,
+  });
 
   @override
   State<SideNavigationDrawer> createState() => _SideNavigationDrawerState();
@@ -21,6 +25,7 @@ class SideNavigationDrawer extends StatefulWidget {
 
 class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
   String currentRoute = 'dashboard';
+  bool _isLoggingOut = false;
 
   Widget getActiveScreen() {
     final langKey = ValueKey(context.locale.languageCode);
@@ -41,27 +46,106 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
     }
   }
 
-  // 🌐 متد هوشمند و چندزبانه برای انتخاب زبان
+  Future<void> _logout() async {
+    if (_isLoggingOut) return;
+
+    setState(() {
+      _isLoggingOut = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.signOut();
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoggingOut = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'خطا در خروج از حساب: ${e.message ?? e.code}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoggingOut = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا در خروج از حساب: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showLogoutDialog(BuildContext context) async {
+    if (_isLoggingOut) return;
+
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('خروج از حساب مدیریت'),
+          content: const Text(
+            'آیا مطمئن هستید که می‌خواهید از پنل مدیریت خارج شوید؟',
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(
+                'انصراف',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('خروج'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true && mounted) {
+      await _logout();
+    }
+  }
+
   void _showLanguageDialog(BuildContext context) {
     String selectedLang = context.locale.languageCode;
 
-    String titleText = "انتخاب زبان / ژبه انتخاب کړئ";
-    String cancelText = "انصراف";
-    String confirmText = "تأیید";
+    String titleText = 'انتخاب زبان / ژبه انتخاب کړئ';
+    String cancelText = 'انصراف';
+    String confirmText = 'تأیید';
 
     if (context.locale.languageCode == 'en') {
-      titleText = "Select Language";
-      cancelText = "Cancel";
-      confirmText = "Confirm";
+      titleText = 'Select Language';
+      cancelText = 'Cancel';
+      confirmText = 'Confirm';
     } else if (context.locale.languageCode == 'ps') {
-      titleText = "ژبه انتخاب کړئ";
-      cancelText = "بیاتوان";
-      confirmText = "تائید";
+      titleText = 'ژبه انتخاب کړئ';
+      cancelText = 'بیاتوان';
+      confirmText = 'تائید';
     }
 
     showDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -70,12 +154,18 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
               ),
               title: Row(
                 children: [
-                  const Icon(Icons.language, color: AppColors.primary),
+                  const Icon(
+                    Icons.language,
+                    color: AppColors.primary,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       titleText,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -84,35 +174,38 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<String>(
-                    title: const Text("دری (Farsi)"),
+                    title: const Text('دری (Farsi)'),
                     value: 'fa',
                     groupValue: selectedLang,
                     activeColor: AppColors.primary,
                     onChanged: (value) {
+                      if (value == null) return;
                       setDialogState(() {
-                        selectedLang = value!;
+                        selectedLang = value;
                       });
                     },
                   ),
                   RadioListTile<String>(
-                    title: const Text("پښتو (Pashto)"),
+                    title: const Text('پښتو (Pashto)'),
                     value: 'ps',
                     groupValue: selectedLang,
                     activeColor: AppColors.primary,
                     onChanged: (value) {
+                      if (value == null) return;
                       setDialogState(() {
-                        selectedLang = value!;
+                        selectedLang = value;
                       });
                     },
                   ),
                   RadioListTile<String>(
-                    title: const Text("English"),
+                    title: const Text('English'),
                     value: 'en',
                     groupValue: selectedLang,
                     activeColor: AppColors.primary,
                     onChanged: (value) {
+                      if (value == null) return;
                       setDialogState(() {
-                        selectedLang = value!;
+                        selectedLang = value;
                       });
                     },
                   ),
@@ -121,7 +214,10 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(cancelText, style: const TextStyle(color: Colors.grey)),
+                  child: Text(
+                    cancelText,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -133,8 +229,10 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
                   ),
                   onPressed: () async {
                     Navigator.of(dialogContext).pop();
+
                     if (selectedLang != context.locale.languageCode) {
                       await context.setLocale(Locale(selectedLang));
+
                       if (mounted) {
                         setState(() {});
                       }
@@ -150,82 +248,46 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
     );
   }
 
-  // 🚪 متد دیالوگ تأیید خروج از حساب
-  Future<void> _showLogoutDialog(BuildContext context) async {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text("خروج از حساب مدیریت"),
-          content: const Text("آیا مطمئن هستید که می‌خواهید از پنل مدیریت خارج شوید؟"),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          actions: <Widget>[
-            TextButton(
-              child: const Text("انصراف", style: TextStyle(color: Colors.grey)),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text("خروج"),
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await FirebaseAuth.instance.signOut();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final Color sideBarBg = AppColors.primary;
-    final Color activeItemBg = Colors.white.withOpacity(0.15);
-    const Color textStyleColor = Colors.white70;
-    const Color activeTextColor = Colors.white;
+    final sideBarBg = AppColors.primary;
+    final activeItemBg = Colors.white.withOpacity(0.15);
+    const textStyleColor = Colors.white70;
+    const activeTextColor = Colors.white;
+    final currentLangCode = context.locale.languageCode;
 
-    final String currentLangCode = context.locale.languageCode;
-
-    List<AdminMenuItem> getMenuItems() {
-      return [
-        AdminMenuItem(
-          title: 'home'.tr(),
-          route: 'dashboard',
-          icon: CupertinoIcons.rectangle_grid_2x2_fill,
-        ),
-        AdminMenuItem(
-          title: 'manage_drivers'.tr(),
-          route: DriverPage.id,
-          icon: CupertinoIcons.car_detailed,
-        ),
-        AdminMenuItem(
-          title: 'manage_users'.tr(),
-          route: UserPage.id,
-          icon: CupertinoIcons.person_2_fill,
-        ),
-        AdminMenuItem(
-          title: 'active_rides'.tr(),
-          route: TripsPage.id,
-          icon: CupertinoIcons.location_fill,
-        ),
-        AdminMenuItem(
-          title: 'ارسال اعلان‌ها',
-          route: NotificationsPage.id,
-          icon: CupertinoIcons.bell_fill,
-        ),
-        AdminMenuItem(
-          title: 'total_earned'.tr(),
-          route: 'earnings',
-          icon: CupertinoIcons.money_dollar,
-        ),
-      ];
-    }
+    final menuItems = <AdminMenuItem>[
+      AdminMenuItem(
+        title: 'home'.tr(),
+        route: 'dashboard',
+        icon: CupertinoIcons.rectangle_grid_2x2_fill,
+      ),
+      AdminMenuItem(
+        title: 'manage_drivers'.tr(),
+        route: DriverPage.id,
+        icon: CupertinoIcons.car_detailed,
+      ),
+      AdminMenuItem(
+        title: 'manage_users'.tr(),
+        route: UserPage.id,
+        icon: CupertinoIcons.person_2_fill,
+      ),
+      AdminMenuItem(
+        title: 'active_rides'.tr(),
+        route: TripsPage.id,
+        icon: CupertinoIcons.location_fill,
+      ),
+      AdminMenuItem(
+        title: 'ارسال اعلان‌ها',
+        route: NotificationsPage.id,
+        icon: CupertinoIcons.bell_fill,
+      ),
+      AdminMenuItem(
+        title: 'total_earned'.tr(),
+        route: 'earnings',
+        icon: CupertinoIcons.money_dollar,
+      ),
+    ];
 
     return Scaffold(
       body: AdminScaffold(
@@ -236,7 +298,7 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
           elevation: 0,
           iconTheme: const IconThemeData(color: Colors.white),
           title: const Text(
-            "Safir Taxi",
+            'Safir Taxi',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -245,14 +307,31 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.language, color: Colors.white),
-              tooltip: "تغییر زبان",
+              icon: const Icon(
+                Icons.language,
+                color: Colors.white,
+              ),
+              tooltip: 'تغییر زبان',
               onPressed: () => _showLanguageDialog(context),
             ),
             IconButton(
-              icon: const Icon(Icons.logout_rounded, color: Colors.white),
-              tooltip: "خروج از حساب",
-              onPressed: () => _showLogoutDialog(context),
+              icon: _isLoggingOut
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.white,
+                    ),
+              tooltip: 'خروج از حساب',
+              onPressed: _isLoggingOut
+                  ? null
+                  : () => _showLogoutDialog(context),
             ),
             const SizedBox(width: 8),
           ],
@@ -260,7 +339,10 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
         sideBar: SideBar(
           key: ValueKey('sidebar_$currentLangCode'),
           backgroundColor: sideBarBg,
-          textStyle: const TextStyle(color: textStyleColor, fontSize: 13),
+          textStyle: const TextStyle(
+            color: textStyleColor,
+            fontSize: 13,
+          ),
           activeBackgroundColor: activeItemBg,
           activeTextStyle: const TextStyle(
             color: activeTextColor,
@@ -269,14 +351,14 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
           borderColor: AppColors.primary.withOpacity(0.3),
           iconColor: textStyleColor,
           activeIconColor: activeTextColor,
-          items: getMenuItems(),
+          items: menuItems,
           selectedRoute: currentRoute,
           onSelected: (itemSelected) {
-            if (itemSelected.route != null) {
-              setState(() {
-                currentRoute = itemSelected.route!;
-              });
-            }
+            if (itemSelected.route == null) return;
+
+            setState(() {
+              currentRoute = itemSelected.route!;
+            });
           },
         ),
         body: getActiveScreen(),
