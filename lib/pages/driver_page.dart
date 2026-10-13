@@ -482,7 +482,7 @@ class _DriverPageState extends State<DriverPage> {
           _headerCell('کد', 0.8),
           _headerCell('نام راننده', 1.7),
           _headerCell('شماره تماس', 1.3),
-          _headerCell('خودرو', 1.2),
+          _headerCell('وسیلهٔ نقلیه', 1.2),
           _headerCell('وضعیت', 1.1),
           _headerCell('مدارک', 1.1),
           _headerCell('عملیات', 1.8),
