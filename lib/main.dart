@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -54,19 +55,19 @@ class SafirAdminApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'Safir Admin Panel',
 
-        // Easy Localization
         localizationsDelegates: context.localizationDelegates,
         supportedLocales: context.supportedLocales,
         locale: context.locale,
 
-        // راست‌به‌چپ شدن خودکار فارسی و پشتو
         builder: (context, child) {
           final localeCode = context.locale.languageCode;
 
+          final direction = localeCode == 'fa' || localeCode == 'ps'
+              ? ui.TextDirection.rtl
+              : ui.TextDirection.ltr;
+
           return Directionality(
-            textDirection: localeCode == 'fa' || localeCode == 'ps'
-                ? TextDirection.rtl
-                : TextDirection.ltr,
+            textDirection: direction,
             child: child ?? const SizedBox.shrink(),
           );
         },
@@ -136,6 +137,10 @@ class SafirAdminApp extends StatelessWidget {
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 13,
+              ),
               textStyle: const TextStyle(
                 fontFamily: 'IranYekan',
                 fontSize: 13,
@@ -161,6 +166,10 @@ class SafirAdminApp extends StatelessWidget {
               fontFamily: 'IranYekan',
               color: Colors.black87,
             ),
+            bodySmall: TextStyle(
+              fontFamily: 'IranYekan',
+              color: Colors.black54,
+            ),
           ),
         ),
 
@@ -184,18 +193,12 @@ class AuthGate extends StatelessWidget {
             title: 'خطا در بررسی وضعیت ورود',
             message: snapshot.error.toString(),
             color: Colors.red,
+            showSignOutButton: true,
           );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Color(0xFFF5F7FB),
-            body: Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
-          );
+          return const _LoadingPage();
         }
 
         final user = snapshot.data;
@@ -212,17 +215,35 @@ class AuthGate extends StatelessWidget {
   }
 }
 
+class _LoadingPage extends StatelessWidget {
+  const _LoadingPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFF5F7FB),
+      body: Center(
+        child: CircularProgressIndicator(
+          color: AppColors.primary,
+        ),
+      ),
+    );
+  }
+}
+
 class _AuthStatePage extends StatelessWidget {
   final IconData icon;
   final String title;
   final String message;
   final Color color;
+  final bool showSignOutButton;
 
   const _AuthStatePage({
     required this.icon,
     required this.title,
     required this.message,
     required this.color,
+    this.showSignOutButton = false,
   });
 
   @override
@@ -231,13 +252,16 @@ class _AuthStatePage extends StatelessWidget {
       backgroundColor: const Color(0xFFF5F7FB),
       body: Center(
         child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 460),
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(28),
-          constraints: const BoxConstraints(maxWidth: 460),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade100),
+            border: Border.all(
+              color: Colors.grey.shade100,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.04),
@@ -274,14 +298,16 @@ class _AuthStatePage extends StatelessWidget {
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {
-                  FirebaseAuth.instance.signOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('بازگشت به صفحه ورود'),
-              ),
+              if (showSignOutButton) ...[
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+                  },
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('بازگشت به صفحه ورود'),
+                ),
+              ],
             ],
           ),
         ),
