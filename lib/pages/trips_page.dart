@@ -446,12 +446,11 @@ class _TripsPageState extends State<TripsPage> {
     required bool isMobile,
   }) {
     if (snapshot.hasError) {
-      return _buildStateMessage(
-        icon: Icons.error_outline_rounded,
-        message: 'خطا در دریافت اطلاعات سفرها:
-${snapshot.error}',
-        color: Colors.red.shade600,
-      );
+  return _buildStateMessage(
+    icon: Icons.error_outline_rounded,
+    message: 'خطا در دریافت اطلاعات سفرها: ${snapshot.error}',
+    color: Colors.red.shade600,
+  );
     }
 
     if (snapshot.connectionState == ConnectionState.waiting) {
