@@ -838,18 +838,15 @@ class _DashboardState extends State<Dashboard> {
   AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> rides,
 ) {
   if (drivers.hasError) {
-    return 'خطا در خواندن راننده‌ها:
-${drivers.error}';
+    return 'خطا در خواندن راننده‌ها: ${drivers.error}';
   }
 
   if (users.hasError) {
-    return 'خطا در خواندن مسافرها:
-${users.error}';
+    return 'خطا در خواندن مسافرها: ${users.error}';
   }
 
   if (rides.hasError) {
-    return 'خطا در خواندن سفرها:
-${rides.error}';
+    return 'خطا در خواندن سفرها: ${rides.error}';
   }
 
   return null;
