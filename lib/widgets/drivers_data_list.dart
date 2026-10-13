@@ -30,12 +30,11 @@ class _DriversDataListState extends State<DriversDataList> {
       stream: _driversStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _buildStateMessage(
-            icon: Icons.error_outline_rounded,
-            message: 'خطا در خواندن رانندگان:
-${snapshot.error}',
-            color: Colors.red.shade600,
-          );
+  return _buildStateMessage(
+    icon: Icons.error_outline_rounded,
+    message: 'خطا در خواندن رانندگان: ${snapshot.error}',
+    color: Colors.red.shade600,
+  );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
