@@ -833,26 +833,26 @@ class _DashboardState extends State<Dashboard> {
   }
 
   String? _getFirstError(
-    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> drivers,
-    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> users,
-    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> rides,
-  ) {
-    if (drivers.hasError) {
-      return 'خطا در خواندن راننده‌ها:
+  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> drivers,
+  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> users,
+  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> rides,
+) {
+  if (drivers.hasError) {
+    return 'خطا در خواندن راننده‌ها:
 ${drivers.error}';
-    }
+  }
 
-    if (users.hasError) {
-      return 'خطا در خواندن مسافرها:
+  if (users.hasError) {
+    return 'خطا در خواندن مسافرها:
 ${users.error}';
-    }
+  }
 
-    if (rides.hasError) {
-      return 'خطا در خواندن سفرها:
+  if (rides.hasError) {
+    return 'خطا در خواندن سفرها:
 ${rides.error}';
-    }
+  }
 
-    return null;
+  return null;
   }
 
   String _normalizeStatus(String value) {
