@@ -63,9 +63,10 @@ class SafirAdminApp extends StatelessWidget {
         builder: (context, child) {
           final localeCode = context.locale.languageCode;
 
-          final direction = localeCode == 'fa' || localeCode == 'ps'
-              ? ui.TextDirection.rtl
-              : ui.TextDirection.ltr;
+          final direction =
+              localeCode == 'fa' || localeCode == 'ps'
+                  ? ui.TextDirection.rtl
+                  : ui.TextDirection.ltr;
 
           return Directionality(
             textDirection: direction,
@@ -187,69 +188,269 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
+      builder: (context, authSnapshot) {
+        if (authSnapshot.hasError) {
           return _AuthStatePage(
             icon: Icons.error_outline_rounded,
             title: 'خطا در بررسی وضعیت ورود',
-            message: snapshot.error.toString(),
+            message: authSnapshot.error.toString(),
             color: Colors.red,
             showSignOutButton: true,
           );
         }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const _LoadingPage();
         }
 
-        final user = snapshot.data;
+        final user = authSnapshot.data;
 
-        if (user != null) {
-  return FutureBuilder<
-      DocumentSnapshot<Map<String, dynamic>>>(
-    future: FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get(),
-    builder: (context, userSnapshot) {
-      if (userSnapshot.connectionState ==
-          ConnectionState.waiting) {
-        return const _LoadingPage();
-      }
+        if (user == null) {
+          return const LoginPage();
+        }
 
-      if (userSnapshot.hasError) {
-        return const _AccessDeniedPage(
-          message: 'خطا در دریافت اطلاعات دسترسی.',
+        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const _LoadingPage();
+            }
+
+            if (userSnapshot.hasError) {
+              return _AccessDeniedPage(
+                message:
+                    'خطا در دریافت اطلاعات دسترسی:
+${userSnapshot.error}',
+              );
+            }
+
+            final document = userSnapshot.data;
+
+            if (document == null || !document.exists) {
+              return const _AccessDeniedPage(
+                message: 'برای این حساب، پروفایل مدیریتی پیدا نشد.',
+              );
+            }
+
+            final userData = document.data();
+
+            if (userData == null) {
+              return const _AccessDeniedPage(
+                message: 'اطلاعات پروفایل این حساب خالی است.',
+              );
+            }
+
+            final isActive = userData['active'] == true;
+            final role = userData['role']?.toString() ?? '';
+
+            final allowedSections =
+                (userData['allowedSections'] as List<dynamic>?)
+                    ?.map((item) => item.toString())
+                    .toList() ??
+                <String>[];
+
+            if (!isActive) {
+              return const _AccessDeniedPage(
+                message: 'این حساب غیرفعال است.',
+              );
+            }
+
+            if (role.isEmpty) {
+              return const _AccessDeniedPage(
+                message: 'نقش این حساب در Firestore تعیین نشده است.',
+              );
+            }
+
+            if (role == 'superAdmin') {
+              return SideNavigationDrawer(
+                currentLocale: context.locale,
+              );
+            }
+
+            if (allowedSections.isEmpty) {
+              return const _AccessDeniedPage(
+                message: 'برای این حساب هیچ بخشی تعیین نشده است.',
+              );
+            }
+
+            return RoleBasedSectionPage(
+              role: role,
+              allowedSections: allowedSections,
+              currentLocale: context.locale,
+            );
+          },
         );
-      }
-
-      final userData = userSnapshot.data?.data();
-
-      if (userData == null) {
-        return const _AccessDeniedPage(
-          message: 'برای این حساب، پروفایل مدیریتی پیدا نشد.',
-        );
-      }
-
-      final isActive = userData['active'] == true;
-      final role = userData['role']?.toString() ?? '';
-
-      if (!isActive || role != 'superAdmin') {
-        return const _AccessDeniedPage(
-          message: 'این حساب اجازهٔ ورود به پنل مدیریت را ندارد.',
-        );
-      }
-
-      return SideNavigationDrawer(
-        currentLocale: context.locale,
-      );
-    },
-  );
-}
-
-return const LoginPage();
       },
     );
+  }
+}
+
+class RoleBasedSectionPage extends StatelessWidget {
+  final String role;
+  final List<String> allowedSections;
+  final Locale currentLocale;
+
+  const RoleBasedSectionPage({
+    super.key,
+    required this.role,
+    required this.allowedSections,
+    required this.currentLocale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedSection = allowedSections.first;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      appBar: AppBar(
+        title: Text(
+          _sectionTitle(selectedSection),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'خروج',
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+            icon: const Icon(Icons.logout_rounded),
+          ),
+        ],
+      ),
+      body: _SectionContent(
+        section: selectedSection,
+        role: role,
+      ),
+    );
+  }
+
+  String _sectionTitle(String section) {
+    switch (section) {
+      case 'support':
+        return 'پشتیبانی';
+      case 'drivers':
+        return 'رانندگان';
+      case 'users':
+        return 'کاربران';
+      case 'trips':
+        return 'سفرها';
+      case 'settings':
+        return 'تنظیمات';
+      default:
+        return section;
+    }
+  }
+}
+
+class _SectionContent extends StatelessWidget {
+  final String section;
+  final String role;
+
+  const _SectionContent({
+    required this.section,
+    required this.role,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _title(section);
+    final icon = _icon(section);
+
+    return Center(
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 520),
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 64,
+              color: AppColors.primary,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'این بخش برای نقش "$role" باز شده است.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.black54,
+                height: 1.6,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'کنترل دسترسی با موفقیت کار می‌کند.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _title(String section) {
+    switch (section) {
+      case 'support':
+        return 'صفحه پشتیبانی';
+      case 'drivers':
+        return 'صفحه رانندگان';
+      case 'users':
+        return 'صفحه کاربران';
+      case 'trips':
+        return 'صفحه سفرها';
+      case 'settings':
+        return 'صفحه تنظیمات';
+      default:
+        return 'بخش $section';
+    }
+  }
+
+  IconData _icon(String section) {
+    switch (section) {
+      case 'support':
+        return Icons.support_agent_rounded;
+      case 'drivers':
+        return Icons.drive_eta_rounded;
+      case 'users':
+        return Icons.people_alt_rounded;
+      case 'trips':
+        return Icons.local_taxi_rounded;
+      case 'settings':
+        return Icons.settings_rounded;
+      default:
+        return Icons.dashboard_rounded;
+    }
   }
 }
 
@@ -283,74 +484,6 @@ class _AuthStatePage extends StatelessWidget {
     required this.color,
     this.showSignOutButton = false,
   });
-  class _AccessDeniedPage extends StatelessWidget {
-  final String message;
-
-  const _AccessDeniedPage({
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 460),
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.lock_outline_rounded,
-                size: 52,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'دسترسی رد شد',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.black54,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 22),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('بازگشت به ورود'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -414,6 +547,76 @@ class _AuthStatePage extends StatelessWidget {
                   label: const Text('بازگشت به صفحه ورود'),
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccessDeniedPage extends StatelessWidget {
+  final String message;
+
+  const _AccessDeniedPage({
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: Center(
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 460),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.lock_outline_rounded,
+                size: 52,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'دسترسی رد شد',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('بازگشت به ورود'),
+              ),
             ],
           ),
         ),
