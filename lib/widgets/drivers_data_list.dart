@@ -1430,31 +1430,6 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
-  Future<void> _confirmApprovalChange({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> document,
-    required bool currentlyApproved,
-  }) async {
-    final action = currentlyApproved ? 'لغو تأیید' : 'تأیید';
-
-    final confirmed = await _showConfirmDialog(
-      context: context,
-      title: '$action مدارک',
-      message: currentlyApproved
-          ? 'آیا می‌خواهید تأیید مدارک این راننده لغو شود؟'
-          : 'آیا مدارک این راننده را تأیید می‌کنید؟',
-      confirmText: action,
-      color: currentlyApproved ? Colors.orange : Colors.green,
-    );
-
-    if (confirmed == true) {
-      await _updateDriverApproval(
-        driverId: document.id,
-        currentApproved: currentlyApproved,
-      );
-    }
-  }
-
   Future<void> _confirmBlockChange({
     required BuildContext context,
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
