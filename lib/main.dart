@@ -221,10 +221,8 @@ class AuthGate extends StatelessWidget {
 
             if (userSnapshot.hasError) {
               return _AccessDeniedPage(
-                message:
-                    'خطا در دریافت اطلاعات دسترسی:
-${userSnapshot.error}',
-              );
+              message: 'خطا در دریافت اطلاعات دسترسی: ${userSnapshot.error}',
+             );
             }
 
             final document = userSnapshot.data;
