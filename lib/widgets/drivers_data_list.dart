@@ -1430,61 +1430,6 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
-  Future<bool?> _showConfirmDialog({
-    required BuildContext context,
-    required String title,
-    required String message,
-    required String confirmText,
-    required Color color,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Text(
-            message,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text(
-                'انصراف',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                elevation: 0,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: Text(confirmText),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _confirmApprovalChange({
     required BuildContext context,
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
