@@ -583,70 +583,78 @@ class _TripsPageState extends State<TripsPage> {
   }
 
   Widget _buildDesktopTripRow(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
-  ) {
-    final trip = document.data();
-    final item = _parseTrip(document.id, trip);
+  QueryDocumentSnapshot<Map<String, dynamic>> document,
+) {
+  final trip = document.data();
+  final item = _parseTrip(document.id, trip);
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 76),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.025),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+  return Container(
+    constraints: const BoxConstraints(minHeight: 76),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: Colors.grey.shade100),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.025),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        _dataCell(
+          flex: 8,
+          child: _buildTripCode(item.id),
+        ),
+        _dataCell(
+          flex: 13,
+          child: _buildPersonCell(
+            item.passengerName,
+            Icons.person_outline_rounded,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _dataCell(
-            flex: 8,
-            child: _buildTripCode(item.id),
+        ),
+        _dataCell(
+          flex: 13,
+          child: _buildPersonCell(
+            item.driverName,
+            Icons.local_taxi_outlined,
           ),
-          _dataCell(
-            flex: 14,
-            child: _buildPersonCell(
-              item.passengerName,
-              Icons.person_outline_rounded,
-            ),
+        ),
+        _dataCell(
+          flex: 17,
+          child: _buildAddressCell(
+            item.origin,
+            Icons.trip_origin_rounded,
           ),
-          _dataCell(
-            flex: 14,
-            child: _buildPersonCell(
-              item.driverName,
-              Icons.local_taxi_outlined,
-            ),
+        ),
+        _dataCell(
+          flex: 17,
+          child: _buildAddressCell(
+            item.destination,
+            Icons.location_on_outlined,
           ),
-          _dataCell(
-            flex: 19,
-            child: _buildAddressCell(
-              item.origin,
-              Icons.trip_origin_rounded,
-            ),
-          ),
-          _dataCell(
-            flex: 19,
-            child: _buildAddressCell(
-              item.destination,
-              Icons.location_on_outlined,
-            ),
-          ),
-          _dataCell(
-            flex: 11,
-            child: _buildFare(item.fare),
-          ),
-          _dataCell(
-            flex: 15,
-            child: _buildStatusChip(item.status),
-          ),
-        ],
-      ),
-    );
+        ),
+        _dataCell(
+          flex: 10,
+          child: _buildFare(item.fare),
+        ),
+        _dataCell(
+          flex: 10,
+          child: _buildFare(item.commission),
+        ),
+        _dataCell(
+          flex: 11,
+          child: _buildFare(item.driverEarnings),
+        ),
+        _dataCell(
+          flex: 13,
+          child: _buildStatusChip(item.status),
+        ),
+      ],
+    ),
+  );
   }
 
   Widget _buildMobileTripList(
