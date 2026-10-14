@@ -944,98 +944,113 @@ class _TripsPageState extends State<TripsPage> {
   }
 
   _TripItem _parseTrip(
-    String id,
-    Map<String, dynamic> data,
-  ) {
-    final driverId = _readText(
-      data,
-      [
-        'driver_id',
-        'driverId',
-      ],
-    );
+  String id,
+  Map<String, dynamic> data,
+) {
+  final driverId = _readText(
+    data,
+    [
+      'driver_id',
+      'driverId',
+    ],
+  );
 
-    var driverName = _readText(
-      data,
-      [
-        'driver_name',
-        'driverName',
-        'drivername',
-      ],
-    );
+  var driverName = _readText(
+    data,
+    [
+      'driver_name',
+      'driverName',
+      'drivername',
+    ],
+  );
 
-    if (driverName.isEmpty) {
-      driverName = driverId == 'waiting'
-          ? 'در انتظار راننده'
-          : 'تخصیص‌نیافته';
-    }
+  if (driverName.isEmpty) {
+    driverName = driverId == 'waiting'
+        ? 'در انتظار راننده'
+        : 'تخصیص‌نیافته';
+  }
 
-    final passengerName = _readText(
-      data,
-      [
-        'passenger_name',
-        'passengerName',
-        'passengername',
-        'userName',
-        'username',
-        'user_name',
-      ],
-      fallback: 'نامشخص',
-    );
+  final passengerName = _readText(
+    data,
+    [
+      'passenger_name',
+      'passengerName',
+      'passengername',
+      'userName',
+      'username',
+      'user_name',
+    ],
+    fallback: 'نامشخص',
+  );
 
-    final origin = _readAddress(
-      data,
-      [
-        'originAddress',
-        'origin_address',
-        'originaddress',
-        'pickup_address',
-        'pickupAddress',
-        'origin',
-      ],
-      fallback: '-',
-    );
+  final origin = _readAddress(
+    data,
+    [
+      'originAddress',
+      'origin_address',
+      'originaddress',
+      'pickup_address',
+      'pickupAddress',
+      'origin',
+    ],
+    fallback: '-',
+  );
 
-    final destination = _readAddress(
-      data,
-      [
-        'destinationAddress',
-        'destination_address',
-        'destinationaddress',
-        'dropoff_address',
-        'dropoffAddress',
-        'destination',
-      ],
-      fallback: '-',
-    );
+  final destination = _readAddress(
+    data,
+    [
+      'destinationAddress',
+      'destination_address',
+      'destinationaddress',
+      'dropoff_address',
+      'dropoffAddress',
+      'destination',
+    ],
+    fallback: '-',
+  );
 
-    final fare = _readText(
-      data,
-      [
-        'fareAmount',
-        'fare_amount',
-        'fare',
-        'price',
-        'amount',
-      ],
-      fallback: '0',
-    );
+  final fare = _readText(
+    data,
+    [
+      'total_fare',
+      'fareAmount',
+      'fare_amount',
+      'fare',
+      'price',
+      'amount',
+    ],
+    fallback: '0',
+  );
 
-    final status = _readText(
-      data,
-      ['status'],
-      fallback: 'searching',
-    );
+  final commission = _readText(
+    data,
+    ['commission_amount'],
+    fallback: '0',
+  );
 
-    return _TripItem(
-      id: id,
-      passengerName: passengerName,
-      driverName: driverName,
-      origin: origin,
-      destination: destination,
-      fare: fare,
-      status: status,
-    );
+  final driverEarnings = _readText(
+    data,
+    ['driver_earnings'],
+    fallback: '0',
+  );
+
+  final status = _readText(
+    data,
+    ['status'],
+    fallback: 'searching',
+  );
+
+  return _TripItem(
+    id: id,
+    passengerName: passengerName,
+    driverName: driverName,
+    origin: origin,
+    destination: destination,
+    fare: fare,
+    commission: commission,
+    driverEarnings: driverEarnings,
+    status: status,
+  );
   }
 
   String _readAddress(
