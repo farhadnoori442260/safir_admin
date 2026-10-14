@@ -512,7 +512,7 @@ class _TripsPageState extends State<TripsPage> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: SizedBox(
-                width: 1020,
+                width: 1300,
                 child: Column(
                   children: [
                     _buildTableHeader(),
