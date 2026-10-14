@@ -556,8 +556,7 @@ class _DriversDataListState extends State<DriversDataList> {
               overflow: TextOverflow.ellipsis,
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  isApproved ? Colors.orange : Colors.green,
+              backgroundColor: isApproved ? Colors.orange : Colors.green,
               foregroundColor: Colors.white,
               elevation: 0,
               padding: const EdgeInsets.symmetric(
@@ -576,9 +575,7 @@ class _DriversDataListState extends State<DriversDataList> {
         ),
         const SizedBox(width: 6),
         Tooltip(
-          message: isBlocked
-              ? 'خروج از مسدودی'
-              : 'مسدود کردن راننده',
+          message: isBlocked ? 'خروج از مسدودی' : 'مسدود کردن راننده',
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
             onTap: _isUpdating
@@ -599,9 +596,7 @@ class _DriversDataListState extends State<DriversDataList> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
-                isBlocked
-                    ? Icons.lock_open_rounded
-                    : Icons.block_rounded,
+                isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
                 color: isBlocked ? Colors.green : Colors.red,
                 size: 18,
               ),
@@ -642,9 +637,7 @@ class _DriversDataListState extends State<DriversDataList> {
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
     required bool currentlyBlocked,
   }) async {
-    final action = currentlyBlocked
-        ? 'خروج از مسدودی'
-        : 'مسدود کردن';
+    final action = currentlyBlocked ? 'خروج از مسدودی' : 'مسدود کردن';
 
     final confirmed = await _showConfirmDialog(
       context: context,
@@ -779,30 +772,25 @@ class _DriversDataListState extends State<DriversDataList> {
     });
 
     try {
-      final reference = FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(driverId);
+      final reference =
+          FirebaseFirestore.instance.collection('drivers').doc(driverId);
 
       final currentDocument = await reference.get();
       final currentData = currentDocument.data() ?? {};
-
       final currentApproved = _isApproved(currentData);
 
       await reference.update({
         'isBlocked': newBlocked,
         'blockStatus': newBlocked ? 'yes' : 'no',
-        'status': newBlocked
-            ? 'blocked'
-            : (currentApproved ? 'approved' : 'pending'),
+        'status':
+            newBlocked ? 'blocked' : (currentApproved ? 'approved' : 'pending'),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
 
       _showSnackBar(
-        newBlocked
-            ? 'راننده با موفقیت مسدود شد'
-            : 'راننده از حالت مسدود خارج شد',
+        newBlocked ? 'راننده با موفقیت مسدود شد' : 'راننده از حالت مسدود خارج شد',
         newBlocked ? Colors.red : Colors.green,
       );
     } catch (e) {
@@ -890,8 +878,7 @@ class _DriversDataListState extends State<DriversDataList> {
                   Expanded(
                     child: ListView.separated(
                       itemCount: documents.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 14),
+                      separatorBuilder: (_, __) => const SizedBox(height: 14),
                       itemBuilder: (context, index) {
                         final item = documents[index];
 
@@ -1362,9 +1349,7 @@ class _DriversDataListState extends State<DriversDataList> {
 
     final text = value?.toString().trim().toLowerCase();
 
-    if (text == 'true' ||
-        text == 'approved' ||
-        text == 'yes') {
+    if (text == 'true' || text == 'approved' || text == 'yes') {
       return true;
     }
 
@@ -1380,11 +1365,9 @@ class _DriversDataListState extends State<DriversDataList> {
 
     if (value == true) return true;
 
-    final blockStatus =
-        data['blockStatus']?.toString().trim().toLowerCase();
+    final blockStatus = data['blockStatus']?.toString().trim().toLowerCase();
 
-    final status =
-        data['status']?.toString().trim().toLowerCase();
+    final status = data['status']?.toString().trim().toLowerCase();
 
     return blockStatus == 'yes' ||
         blockStatus == 'blocked' ||
@@ -1428,457 +1411,6 @@ class _DriversDataListState extends State<DriversDataList> {
       case _DriverStatus.pending:
         return Icons.pending_actions_rounded;
     }
-  }
-
-  Future<void> _confirmBlockChange({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> document,
-    required bool currentlyBlocked,
-  }) async {
-    final action =
-        currentlyBlocked ? 'خروج از مسدودی' : 'مسدود کردن';
-
-    final confirmed = await _showConfirmDialog(
-      context: context,
-      title: action,
-      message: currentlyBlocked
-          ? 'آیا می‌خواهید این راننده از حالت مسدود خارج شود؟'
-          : 'آیا مطمئن هستید که می‌خواهید این راننده را مسدود کنید؟',
-      confirmText: action,
-      color: currentlyBlocked ? Colors.green : Colors.red,
-    );
-
-    if (confirmed == true) {
-      await _updateDriverBlockStatus(
-        driverId: document.id,
-        currentlyBlocked: currentlyBlocked,
-      );
-    }
-  }
-
-  Future<void> _updateDriverApproval({
-    required String driverId,
-    required bool currentApproved,
-  }) async {
-    if (_isUpdating) return;
-
-    final newApproved = !currentApproved;
-
-    setState(() {
-      _isUpdating = true;
-    });
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(driverId)
-          .update({
-        'isApproved': newApproved,
-        'status': newApproved ? 'approved' : 'pending',
-        'newDriverStatus':
-            newApproved ? 'approved' : 'pending',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-
-      _showSnackBar(
-        newApproved
-            ? 'مدارک راننده با موفقیت تأیید شد'
-            : 'تأیید مدارک راننده لغو شد',
-        Colors.green,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showSnackBar(
-        'خطا در به‌روزرسانی راننده: $e',
-        Colors.red,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUpdating = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _updateDriverBlockStatus({
-    required String driverId,
-    required bool currentlyBlocked,
-  }) async {
-    if (_isUpdating) return;
-
-    final newBlocked = !currentlyBlocked;
-
-    setState(() {
-      _isUpdating = true;
-    });
-
-    try {
-      final reference = FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(driverId);
-
-      final currentDocument = await reference.get();
-      final currentData = currentDocument.data() ?? {};
-      final currentApproved = _isApproved(currentData);
-
-      await reference.update({
-        'isBlocked': newBlocked,
-        'blockStatus': newBlocked ? 'yes' : 'no',
-        'status': newBlocked
-            ? 'blocked'
-            : (currentApproved ? 'approved' : 'pending'),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-
-      _showSnackBar(
-        newBlocked
-            ? 'راننده با موفقیت مسدود شد'
-            : 'راننده از حالت مسدود خارج شد',
-        newBlocked ? Colors.red : Colors.green,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showSnackBar(
-        'خطا در تغییر وضعیت مسدودی: $e',
-        Colors.red,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUpdating = false;
-        });
-      }
-    }
-  }
-
-  void _showDocumentsDialog({
-    required BuildContext context,
-    required Map<String, dynamic> data,
-    required String driverName,
-  }) {
-    final documents = _collectDocuments(data);
-
-    if (documents.isEmpty) {
-      _showSnackBar(
-        'هیچ تصویری برای مدارک این راننده ثبت نشده است.',
-        Colors.orange,
-      );
-      return;
-    }
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 620,
-              maxHeight: 720,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.folder_shared_rounded,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'مدارک راننده: $driverName',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'بستن',
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: documents.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 14),
-                      itemBuilder: (context, index) {
-                        final item = documents[index];
-
-                        return _buildDocumentCard(
-                          title: item.title,
-                          url: item.url,
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDocumentCard({
-    required String title,
-    required String url,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              bottom: Radius.circular(16),
-            ),
-            child: Image.network(
-              url,
-              width: double.infinity,
-              height: 245,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-
-                return const SizedBox(
-                  height: 245,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primary,
-                    ),
-                  ),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 245,
-                  color: Colors.grey.shade200,
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.broken_image_outlined,
-                          size: 42,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'تصویر قابل نمایش نیست',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<_DriverDocument> _collectDocuments(
-    Map<String, dynamic> data,
-  ) {
-    final documents = <_DriverDocument>[];
-    final vehicleInfo = _vehicleInfo(data);
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'profilePicture',
-          'profileImage',
-          'profileImageUrl',
-          'photo',
-          'photoUrl',
-          'photo_url',
-          'imageUrl',
-        ],
-      ),
-      'عکس پروفایل راننده',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'cnicFrontImage',
-          'cnicFrontImageUrl',
-          'idCardFrontImage',
-          'identityCardFrontImage',
-          'idCardUrl',
-        ],
-      ),
-      'روی کارت هویت',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'cnicBackImage',
-          'cnicBackImageUrl',
-          'idCardBackImage',
-          'identityCardBackImage',
-        ],
-      ),
-      'پشت کارت هویت',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'driverFaceWithCnic',
-          'driverFaceWithCnicImage',
-          'cnicWithSelfieImage',
-          'selfieWithCnic',
-        ],
-      ),
-      'عکس سلفی با کارت هویت',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'drivingLicenseFrontImage',
-          'drivingLicenseFrontImageUrl',
-          'licenseFrontImage',
-          'drivingLicenseUrl',
-          'licenseUrl',
-        ],
-      ),
-      'روی گواهینامه',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'drivingLicenseBackImage',
-          'drivingLicenseBackImageUrl',
-          'licenseBackImage',
-        ],
-      ),
-      'پشت گواهینامه',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'vehiclePicture',
-          'vehicleImage',
-          'vehicleImageUrl',
-          'carPhotoUrl',
-          'car_photo_url',
-        ],
-      ),
-      'عکس وسیلهٔ نقلیه',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'registrationCertificateFrontImage',
-          'vehicleRegistrationFrontImage',
-          'registrationFrontImage',
-          'vehicleRegistrationFrontImageUrl',
-        ],
-      ),
-      'روی سند وسیلهٔ نقلیه',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'registrationCertificateBackImage',
-          'vehicleRegistrationBackImage',
-          'registrationBackImage',
-          'vehicleRegistrationBackImageUrl',
-        ],
-      ),
-      'پشت سند وسیلهٔ نقلیه',
-    );
-
-    final uniqueUrls = <String>{};
-
-    return documents.where((document) {
-      return uniqueUrls.add(document.url);
-    }).toList();
-  }
-
-  void _addDocument(
-    List<_DriverDocument> documents,
-    String? url,
-    String title,
-  ) {
-    if (url == null || url.trim().isEmpty) return;
-
-    documents.add(
-      _DriverDocument(
-        title: title,
-        url: url.trim(),
-      ),
-    );
   }
 
   void _showSnackBar(
