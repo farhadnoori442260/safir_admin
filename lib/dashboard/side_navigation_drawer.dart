@@ -7,6 +7,7 @@ import 'package:flutter_admin_scaffold/admin_scaffold.dart';
 import 'package:safir_admin/constants/app_colors.dart';
 import 'package:safir_admin/dashboard/dashboard.dart';
 import 'package:safir_admin/pages/driver_page.dart';
+import 'package:safir_admin/pages/earnings_page.dart';
 import 'package:safir_admin/pages/notifications_page.dart';
 import 'package:safir_admin/pages/trips_page.dart';
 import 'package:safir_admin/pages/user_page.dart';
@@ -41,6 +42,8 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
         return TripsPage(key: langKey);
       case NotificationsPage.id:
         return NotificationsPage(key: langKey);
+        case 'earnings':
+  return EarningsPage(key: langKey);
       default:
         return Dashboard(key: langKey);
     }
