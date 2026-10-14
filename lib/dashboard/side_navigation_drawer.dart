@@ -9,6 +9,7 @@ import 'package:safir_admin/dashboard/dashboard.dart';
 import 'package:safir_admin/pages/driver_page.dart';
 import 'package:safir_admin/pages/earnings_page.dart';
 import 'package:safir_admin/pages/notifications_page.dart';
+import 'package:safir_admin/pages/pricing_settings_page.dart';
 import 'package:safir_admin/pages/trips_page.dart';
 import 'package:safir_admin/pages/user_page.dart';
 
@@ -44,6 +45,8 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
         return NotificationsPage(key: langKey);
         case 'earnings':
   return EarningsPage(key: langKey);
+        case 'pricing_settings':
+  return PricingSettingsPage(key: langKey);
       default:
         return Dashboard(key: langKey);
     }
@@ -290,6 +293,11 @@ class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
         route: 'earnings',
         icon: CupertinoIcons.money_dollar,
       ),
+      AdminMenuItem(
+      title: 'تنظیمات کرایه و کمیسیون',
+      route: 'pricing_settings',
+      icon: CupertinoIcons.slider_horizontal_3,
+     ),
     ];
 
     return Scaffold(
