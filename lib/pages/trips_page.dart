@@ -538,28 +538,30 @@ class _TripsPageState extends State<TripsPage> {
   }
 
   Widget _buildTableHeader() {
-    return Container(
-      height: 54,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.82),
-          ],
-        ),
-      ),
-      child: Row(
-        children: [
-          _headerCell('کد سفر', 8),
-          _headerCell('مسافر', 14),
-          _headerCell('راننده', 14),
-          _headerCell('مبدأ', 19),
-          _headerCell('مقصد', 19),
-          _headerCell('کرایه', 11),
-          _headerCell('وضعیت', 15),
+  return Container(
+    height: 54,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          AppColors.primary,
+          AppColors.primary.withOpacity(0.82),
         ],
       ),
-    );
+    ),
+    child: Row(
+      children: [
+        _headerCell('کد سفر', 8),
+        _headerCell('مسافر', 13),
+        _headerCell('راننده', 13),
+        _headerCell('مبدأ', 17),
+        _headerCell('مقصد', 17),
+        _headerCell('کرایه کل', 10),
+        _headerCell('کمیسیون', 10),
+        _headerCell('سهم راننده', 11),
+        _headerCell('وضعیت', 13),
+      ],
+    ),
+  );
   }
 
   Widget _headerCell(String title, int flex) {
