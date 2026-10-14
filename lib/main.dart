@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -204,12 +205,49 @@ class AuthGate extends StatelessWidget {
         final user = snapshot.data;
 
         if (user != null) {
-          return SideNavigationDrawer(
-            currentLocale: context.locale,
-          );
-        }
+  return FutureBuilder<
+      DocumentSnapshot<Map<String, dynamic>>>(
+    future: FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get(),
+    builder: (context, userSnapshot) {
+      if (userSnapshot.connectionState ==
+          ConnectionState.waiting) {
+        return const _LoadingPage();
+      }
 
-        return const LoginPage();
+      if (userSnapshot.hasError) {
+        return const _AccessDeniedPage(
+          message: 'خطا در دریافت اطلاعات دسترسی.',
+        );
+      }
+
+      final userData = userSnapshot.data?.data();
+
+      if (userData == null) {
+        return const _AccessDeniedPage(
+          message: 'برای این حساب، پروفایل مدیریتی پیدا نشد.',
+        );
+      }
+
+      final isActive = userData['active'] == true;
+      final role = userData['role']?.toString() ?? '';
+
+      if (!isActive || role != 'superAdmin') {
+        return const _AccessDeniedPage(
+          message: 'این حساب اجازهٔ ورود به پنل مدیریت را ندارد.',
+        );
+      }
+
+      return SideNavigationDrawer(
+        currentLocale: context.locale,
+      );
+    },
+  );
+}
+
+return const LoginPage();
       },
     );
   }
@@ -245,6 +283,74 @@ class _AuthStatePage extends StatelessWidget {
     required this.color,
     this.showSignOutButton = false,
   });
+  class _AccessDeniedPage extends StatelessWidget {
+  final String message;
+
+  const _AccessDeniedPage({
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 460),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.lock_outline_rounded,
+                size: 52,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'دسترسی رد شد',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('بازگشت به ورود'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  }
 
   @override
   Widget build(BuildContext context) {
