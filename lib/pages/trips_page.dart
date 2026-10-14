@@ -1397,6 +1397,8 @@ class _TripItem {
   final String origin;
   final String destination;
   final String fare;
+  final String commission;
+  final String driverEarnings;
   final String status;
 
   const _TripItem({
@@ -1406,6 +1408,8 @@ class _TripItem {
     required this.origin,
     required this.destination,
     required this.fare,
+    required this.commission,
+    required this.driverEarnings,
     required this.status,
   });
 }
