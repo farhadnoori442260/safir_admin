@@ -6,11 +6,15 @@ import 'package:safir_admin/constants/app_colors.dart';
 class DriversDataList extends StatefulWidget {
   final String searchQuery;
   final String filterStatus;
+  final String role;
+  final Map<String, dynamic> permissions;
 
   const DriversDataList({
     super.key,
     this.searchQuery = '',
     this.filterStatus = 'all',
+    this.role = 'superAdmin',
+    this.permissions = const {},
   });
 
   @override
