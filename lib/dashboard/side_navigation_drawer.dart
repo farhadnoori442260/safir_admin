@@ -60,7 +60,7 @@ class _SideNavigationDrawerState
   return DriverPage(
     key: langKey,
     role: widget.role,
-    permissions: const {},
+    permissions: widget.permissions,
   );
 
       case UserPage.id:
