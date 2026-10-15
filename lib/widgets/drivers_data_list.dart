@@ -27,8 +27,81 @@ class _DriversDataListState extends State<DriversDataList> {
 
   bool _isUpdating = false;
 
+  bool get _isSuperAdmin {
+    return widget.role.trim().toLowerCase() == 'superadmin';
+  }
+
+  Map<String, dynamic> get _driverPermissions {
+    final rawPermissions = widget.permissions['drivers'];
+
+    if (rawPermissions is Map) {
+      return Map<String, dynamic>.from(rawPermissions);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  bool _hasPermission(
+    String key, {
+    List<String> alternatives = const [],
+  }) {
+    if (_isSuperAdmin) {
+      return true;
+    }
+
+    if (_driverPermissions[key] == true) {
+      return true;
+    }
+
+    for (final alternative in alternatives) {
+      if (_driverPermissions[alternative] == true) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool get _canViewDrivers {
+    return _hasPermission('view');
+  }
+
+  bool get _canViewDocuments {
+    return _hasPermission(
+      'viewDocuments',
+      alternatives: const [
+        'documents',
+        'view_documents',
+      ],
+    );
+  }
+
+  bool get _canUpdateDrivers {
+    return _hasPermission(
+      'update',
+      alternatives: const [
+        'edit',
+        'changeStatus',
+      ],
+    );
+  }
+
+  bool get _canBlockDrivers {
+    return _hasPermission(
+      'delete',
+      alternatives: const [
+        'block',
+        'blockDriver',
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_canViewDrivers) {
+      return _buildPermissionDenied();
+    }
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _driversStream,
       builder: (context, snapshot) {
@@ -61,7 +134,9 @@ class _DriversDataListState extends State<DriversDataList> {
           );
         }
 
-        final filteredDocuments = documents.where(_matchesFilter).toList();
+        final filteredDocuments = documents
+            .where(_matchesFilter)
+            .toList();
 
         if (filteredDocuments.isEmpty) {
           return _buildStateMessage(
@@ -88,23 +163,62 @@ class _DriversDataListState extends State<DriversDataList> {
     );
   }
 
+  Widget _buildPermissionDenied() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 46,
+            color: Colors.red.shade400,
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'شما اجازه مشاهده فهرست رانندگان را ندارید.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool _matchesFilter(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data();
 
     final name = _driverName(data).toLowerCase();
-    final phone = _firstText(data, [
-      'phoneNumber',
-      'phone',
-      'phone_number',
-      'mobile',
-    ]).toLowerCase();
 
-    final email = _firstText(data, [
-      'email',
-      'emailAddress',
-    ]).toLowerCase();
+    final phone = _firstText(
+      data,
+      [
+        'phoneNumber',
+        'phone',
+        'phone_number',
+        'mobile',
+      ],
+    ).toLowerCase();
+
+    final email = _firstText(
+      data,
+      [
+        'email',
+        'emailAddress',
+      ],
+    ).toLowerCase();
 
     final query = widget.searchQuery.trim().toLowerCase();
 
@@ -161,7 +275,14 @@ class _DriversDataListState extends State<DriversDataList> {
     final vehicleInfo = _vehicleInfo(data);
 
     final vehicleType = _vehicleTypeLabel(
-      _firstTextFromMap(vehicleInfo, ['type']),
+      _firstTextFromMap(
+        vehicleInfo,
+        [
+          'type',
+          'vehicleType',
+          'carType',
+        ],
+      ),
     );
 
     final vehicleBrand = _firstTextFromMap(
@@ -170,6 +291,7 @@ class _DriversDataListState extends State<DriversDataList> {
         'brand',
         'model',
         'carModel',
+        'vehicleBrand',
       ],
     );
 
@@ -178,6 +300,7 @@ class _DriversDataListState extends State<DriversDataList> {
       [
         'color',
         'carColor',
+        'vehicleColor',
       ],
     );
 
@@ -269,19 +392,10 @@ class _DriversDataListState extends State<DriversDataList> {
             ),
             _dataCell(
               flex: 11,
-              child: IconButton(
-                tooltip: 'مشاهده مدارک',
-                icon: const Icon(
-                  Icons.folder_shared_outlined,
-                  color: AppColors.primary,
-                ),
-                onPressed: () {
-                  _showDocumentsDialog(
-                    context: context,
-                    data: data,
-                    driverName: driverName,
-                  );
-                },
+              child: _buildDocumentsButton(
+                context: context,
+                data: data,
+                driverName: driverName,
               ),
             ),
             _dataCell(
@@ -295,6 +409,38 @@ class _DriversDataListState extends State<DriversDataList> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDocumentsButton({
+    required BuildContext context,
+    required Map<String, dynamic> data,
+    required String driverName,
+  }) {
+    if (!_canViewDocuments) {
+      return Tooltip(
+        message: 'مجوز مشاهده مدارک را ندارید',
+        child: Icon(
+          Icons.lock_outline_rounded,
+          color: Colors.grey.shade400,
+          size: 20,
+        ),
+      );
+    }
+
+    return IconButton(
+      tooltip: 'مشاهده مدارک',
+      icon: const Icon(
+        Icons.folder_shared_outlined,
+        color: AppColors.primary,
+      ),
+      onPressed: () {
+        _showDocumentsDialog(
+          context: context,
+          data: data,
+          driverName: driverName,
+        );
+      },
     );
   }
 
@@ -535,78 +681,100 @@ class _DriversDataListState extends State<DriversDataList> {
     final isApproved = status == _DriverStatus.approved;
     final isBlocked = status == _DriverStatus.blocked;
 
+    final canUpdate = _canUpdateDrivers;
+    final canBlock = _canBlockDrivers;
+
+    if (!canUpdate && !canBlock) {
+      return Tooltip(
+        message: 'مجوز انجام عملیات را ندارید',
+        child: Icon(
+          Icons.lock_outline_rounded,
+          color: Colors.grey.shade400,
+          size: 20,
+        ),
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Flexible(
-          child: ElevatedButton.icon(
-            onPressed: _isUpdating
-                ? null
-                : () {
-                    _confirmApprovalChange(
-                      context: context,
-                      document: document,
-                      currentlyApproved: isApproved,
-                    );
-                  },
-            icon: Icon(
-              isApproved
-                  ? Icons.remove_moderator_outlined
-                  : Icons.verified_outlined,
-              size: 15,
-            ),
-            label: Text(
-              isApproved ? 'لغو تأیید' : 'تأیید',
-              overflow: TextOverflow.ellipsis,
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isApproved ? Colors.orange : Colors.green,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 9,
-                vertical: 9,
+        if (canUpdate)
+          Flexible(
+            child: ElevatedButton.icon(
+              onPressed: _isUpdating
+                  ? null
+                  : () {
+                      _confirmApprovalChange(
+                        context: context,
+                        document: document,
+                        currentlyApproved: isApproved,
+                      );
+                    },
+              icon: Icon(
+                isApproved
+                    ? Icons.remove_moderator_outlined
+                    : Icons.verified_outlined,
+                size: 15,
               ),
-              textStyle: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+              label: Text(
+                isApproved ? 'لغو تأیید' : 'تأیید',
+                overflow: TextOverflow.ellipsis,
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Tooltip(
-          message: isBlocked ? 'خروج از مسدودی' : 'مسدود کردن راننده',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: _isUpdating
-                ? null
-                : () {
-                    _confirmBlockChange(
-                      context: context,
-                      document: document,
-                      currentlyBlocked: isBlocked,
-                    );
-                  },
-            child: Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isBlocked
-                    ? Colors.green.withOpacity(0.10)
-                    : Colors.red.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
-                color: isBlocked ? Colors.green : Colors.red,
-                size: 18,
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    isApproved ? Colors.orange : Colors.green,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 9,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ),
-        ),
+        if (canUpdate && canBlock)
+          const SizedBox(width: 6),
+        if (canBlock)
+          Tooltip(
+            message: isBlocked
+                ? 'خروج از مسدودی'
+                : 'مسدود کردن راننده',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: _isUpdating
+                  ? null
+                  : () {
+                      _confirmBlockChange(
+                        context: context,
+                        document: document,
+                        currentlyBlocked: isBlocked,
+                      );
+                    },
+              child: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: isBlocked
+                      ? Colors.green.withOpacity(0.10)
+                      : Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isBlocked
+                      ? Icons.lock_open_rounded
+                      : Icons.block_rounded,
+                  color: isBlocked ? Colors.green : Colors.red,
+                  size: 18,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -616,6 +784,13 @@ class _DriversDataListState extends State<DriversDataList> {
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
     required bool currentlyApproved,
   }) async {
+    if (!_canUpdateDrivers) {
+      _showPermissionMessage(
+        'مجوز تغییر وضعیت راننده را ندارید.',
+      );
+      return;
+    }
+
     final action = currentlyApproved ? 'لغو تأیید' : 'تأیید';
 
     final confirmed = await _showConfirmDialog(
@@ -641,7 +816,16 @@ class _DriversDataListState extends State<DriversDataList> {
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
     required bool currentlyBlocked,
   }) async {
-    final action = currentlyBlocked ? 'خروج از مسدودی' : 'مسدود کردن';
+    if (!_canBlockDrivers) {
+      _showPermissionMessage(
+        'مجوز مسدودکردن راننده را ندارید.',
+      );
+      return;
+    }
+
+    final action = currentlyBlocked
+        ? 'خروج از مسدودی'
+        : 'مسدود کردن';
 
     final confirmed = await _showConfirmDialog(
       context: context,
@@ -720,7 +904,14 @@ class _DriversDataListState extends State<DriversDataList> {
     required String driverId,
     required bool currentApproved,
   }) async {
-    if (_isUpdating) return;
+    if (!_canUpdateDrivers || _isUpdating) {
+      if (!_canUpdateDrivers) {
+        _showPermissionMessage(
+          'مجوز تغییر وضعیت راننده را ندارید.',
+        );
+      }
+      return;
+    }
 
     final newApproved = !currentApproved;
 
@@ -747,11 +938,18 @@ class _DriversDataListState extends State<DriversDataList> {
             : 'تأیید مدارک راننده لغو شد',
         Colors.green,
       );
-    } catch (e) {
+    } on FirebaseException catch (error) {
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در به‌روزرسانی راننده: $e',
+        'خطا در به‌روزرسانی راننده: ${error.message ?? error.code}',
+        Colors.red,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      _showSnackBar(
+        'خطا در به‌روزرسانی راننده: $error',
         Colors.red,
       );
     } finally {
@@ -767,7 +965,14 @@ class _DriversDataListState extends State<DriversDataList> {
     required String driverId,
     required bool currentlyBlocked,
   }) async {
-    if (_isUpdating) return;
+    if (!_canBlockDrivers || _isUpdating) {
+      if (!_canBlockDrivers) {
+        _showPermissionMessage(
+          'مجوز مسدودکردن راننده را ندارید.',
+        );
+      }
+      return;
+    }
 
     final newBlocked = !currentlyBlocked;
 
@@ -776,8 +981,9 @@ class _DriversDataListState extends State<DriversDataList> {
     });
 
     try {
-      final reference =
-          FirebaseFirestore.instance.collection('drivers').doc(driverId);
+      final reference = FirebaseFirestore.instance
+          .collection('drivers')
+          .doc(driverId);
 
       final currentDocument = await reference.get();
       final currentData = currentDocument.data() ?? {};
@@ -786,22 +992,33 @@ class _DriversDataListState extends State<DriversDataList> {
       await reference.update({
         'isBlocked': newBlocked,
         'blockStatus': newBlocked ? 'yes' : 'no',
-        'status':
-            newBlocked ? 'blocked' : (currentApproved ? 'approved' : 'pending'),
+        'status': newBlocked
+            ? 'blocked'
+            : (currentApproved ? 'approved' : 'pending'),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
 
       _showSnackBar(
-        newBlocked ? 'راننده با موفقیت مسدود شد' : 'راننده از حالت مسدود خارج شد',
+        newBlocked
+            ? 'راننده با موفقیت مسدود شد'
+            : 'راننده از حالت مسدود خارج شد',
         newBlocked ? Colors.red : Colors.green,
       );
-    } catch (e) {
+    } on FirebaseException catch (error) {
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در تغییر وضعیت مسدودی: $e',
+        'خطا در تغییر وضعیت مسدودی: '
+        '${error.message ?? error.code}',
+        Colors.red,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      _showSnackBar(
+        'خطا در تغییر وضعیت مسدودی: $error',
         Colors.red,
       );
     } finally {
@@ -818,6 +1035,13 @@ class _DriversDataListState extends State<DriversDataList> {
     required Map<String, dynamic> data,
     required String driverName,
   }) {
+    if (!_canViewDocuments) {
+      _showPermissionMessage(
+        'مجوز مشاهده مدارک را ندارید.',
+      );
+      return;
+    }
+
     final documents = _collectDocuments(data);
 
     if (documents.isEmpty) {
@@ -882,7 +1106,8 @@ class _DriversDataListState extends State<DriversDataList> {
                   Expanded(
                     child: ListView.separated(
                       itemCount: documents.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 14),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 14),
                       itemBuilder: (context, index) {
                         final item = documents[index];
 
@@ -1125,7 +1350,9 @@ class _DriversDataListState extends State<DriversDataList> {
     String? url,
     String title,
   ) {
-    if (url == null || url.trim().isEmpty) return;
+    if (url == null || url.trim().isEmpty) {
+      return;
+    }
 
     documents.add(
       _DriverDocument(
@@ -1196,17 +1423,26 @@ class _DriversDataListState extends State<DriversDataList> {
   ) {
     final province = _firstTextFromMap(
       vehicleInfo,
-      ['plateProvince'],
+      [
+        'plateProvince',
+        'province',
+      ],
     );
 
     final category = _firstTextFromMap(
       vehicleInfo,
-      ['plateCategory'],
+      [
+        'plateCategory',
+        'category',
+      ],
     );
 
     final plateType = _firstTextFromMap(
       vehicleInfo,
-      ['plateType'],
+      [
+        'plateType',
+        'type',
+      ],
     );
 
     final number = _firstTextFromMap(
@@ -1215,6 +1451,7 @@ class _DriversDataListState extends State<DriversDataList> {
         'registrationPlateNumber',
         'plateNumber',
         'carNumber',
+        'plate',
       ],
     );
 
@@ -1230,7 +1467,10 @@ class _DriversDataListState extends State<DriversDataList> {
 
     final result = parts.join(' - ');
 
-    if (plateType.isNotEmpty) {
+    if (plateType.isNotEmpty &&
+        plateType.toLowerCase() !=
+            _firstTextFromMap(vehicleInfo, ['type'])
+                .toLowerCase()) {
       return '$result ($plateType)';
     }
 
@@ -1278,7 +1518,9 @@ class _DriversDataListState extends State<DriversDataList> {
     for (final key in keys) {
       final value = data[key];
 
-      if (value == null) continue;
+      if (value == null) {
+        continue;
+      }
 
       if (value is String && value.trim().isNotEmpty) {
         return value.trim();
@@ -1300,7 +1542,9 @@ class _DriversDataListState extends State<DriversDataList> {
     for (final key in keys) {
       final value = data[key];
 
-      if (value == null) continue;
+      if (value == null) {
+        continue;
+      }
 
       if (value is String && value.trim().isNotEmpty) {
         return value.trim();
@@ -1319,7 +1563,12 @@ class _DriversDataListState extends State<DriversDataList> {
     List<String> keys,
   ) {
     final value = _firstText(data, keys);
-    return value.isEmpty ? null : value;
+
+    if (value.isEmpty) {
+      return null;
+    }
+
+    return value;
   }
 
   String? _firstNullableTextFromMap(
@@ -1327,7 +1576,12 @@ class _DriversDataListState extends State<DriversDataList> {
     List<String> keys,
   ) {
     final value = _firstTextFromMap(data, keys);
-    return value.isEmpty ? null : value;
+
+    if (value.isEmpty) {
+      return null;
+    }
+
+    return value;
   }
 
   _DriverStatus _driverStatus(
@@ -1349,11 +1603,15 @@ class _DriversDataListState extends State<DriversDataList> {
   ) {
     final value = data['isApproved'];
 
-    if (value == true) return true;
+    if (value == true) {
+      return true;
+    }
 
     final text = value?.toString().trim().toLowerCase();
 
-    if (text == 'true' || text == 'approved' || text == 'yes') {
+    if (text == 'true' ||
+        text == 'approved' ||
+        text == 'yes') {
       return true;
     }
 
@@ -1367,11 +1625,19 @@ class _DriversDataListState extends State<DriversDataList> {
   ) {
     final value = data['isBlocked'];
 
-    if (value == true) return true;
+    if (value == true) {
+      return true;
+    }
 
-    final blockStatus = data['blockStatus']?.toString().trim().toLowerCase();
+    final blockStatus = data['blockStatus']
+        ?.toString()
+        .trim()
+        .toLowerCase();
 
-    final status = data['status']?.toString().trim().toLowerCase();
+    final status = data['status']
+        ?.toString()
+        .trim()
+        .toLowerCase();
 
     return blockStatus == 'yes' ||
         blockStatus == 'blocked' ||
@@ -1417,11 +1683,33 @@ class _DriversDataListState extends State<DriversDataList> {
     }
   }
 
+  void _showPermissionMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+  }
+
   void _showSnackBar(
     String message,
     Color color,
   ) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
