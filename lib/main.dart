@@ -265,8 +265,9 @@ class AuthGate extends StatelessWidget {
             if (role == 'superAdmin') {
               return SideNavigationDrawer(
                 currentLocale: context.locale,
-               role: role,
-              allowedSections: const ['all'],
+                role: role,
+                allowedSections: const ['all'],
+               permissions: const {},
              );
             }
 
