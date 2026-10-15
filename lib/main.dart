@@ -211,7 +211,7 @@ class AuthGate extends StatelessWidget {
 
         return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           future: FirebaseFirestore.instance
-              .collection('users')
+              .collection('admin')
               .doc(user.uid)
               .get(),
           builder: (context, userSnapshot) {
