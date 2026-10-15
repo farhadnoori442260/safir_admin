@@ -458,10 +458,12 @@ class _DriverPageState extends State<DriverPage> {
                     const SizedBox(height: 10),
                     DriversDataList(
                       key: ValueKey(
-                        '$_searchQuery-$_selectedFilter',
+                      '$_searchQuery-$_selectedFilter-${widget.role}',
                       ),
-                      searchQuery: _searchQuery,
-                      filterStatus: _selectedFilter,
+                     searchQuery: _searchQuery,
+                     filterStatus: _selectedFilter,
+                      role: widget.role,
+                     permissions: widget.permissions,
                     ),
                   ],
                 ),
