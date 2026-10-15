@@ -8,7 +8,14 @@ import 'package:safir_admin/widgets/drivers_data_list.dart';
 class DriverPage extends StatefulWidget {
   static const String id = 'webPageDrivers';
 
-  const DriverPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const DriverPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<DriverPage> createState() => _DriverPageState();
