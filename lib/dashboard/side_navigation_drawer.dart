@@ -17,12 +17,14 @@ class SideNavigationDrawer extends StatefulWidget {
   final Locale currentLocale;
   final String role;
   final List<String> allowedSections;
+  final Map<String, dynamic> permissions;
 
   const SideNavigationDrawer({
     super.key,
     required this.currentLocale,
     required this.role,
     required this.allowedSections,
+    this.permissions = const {},
   });
 
   @override
