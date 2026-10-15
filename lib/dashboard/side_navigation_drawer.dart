@@ -55,7 +55,11 @@ class _SideNavigationDrawerState
         return Dashboard(key: langKey);
 
       case DriverPage.id:
-        return DriverPage(key: langKey);
+  return DriverPage(
+    key: langKey,
+    role: widget.role,
+    permissions: const {},
+  );
 
       case UserPage.id:
         return UserPage(key: langKey);
