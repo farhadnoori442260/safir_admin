@@ -265,7 +265,9 @@ class AuthGate extends StatelessWidget {
             if (role == 'superAdmin') {
               return SideNavigationDrawer(
                 currentLocale: context.locale,
-              );
+               role: role,
+              allowedSections: const ['all'],
+             );
             }
 
             if (allowedSections.isEmpty) {
@@ -274,11 +276,11 @@ class AuthGate extends StatelessWidget {
               );
             }
 
-            return RoleBasedSectionPage(
-              role: role,
-              allowedSections: allowedSections,
+            return SideNavigationDrawer(
               currentLocale: context.locale,
-            );
+              role: role,
+             allowedSections: allowedSections,
+           );
           },
         );
       },
