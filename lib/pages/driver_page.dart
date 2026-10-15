@@ -22,10 +22,57 @@ class DriverPage extends StatefulWidget {
 }
 
 class _DriverPageState extends State<DriverPage> {
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController =
+      TextEditingController();
 
   String _searchQuery = '';
   String _selectedFilter = 'all';
+
+  bool get isSuperAdmin => widget.role == 'superAdmin';
+
+  Map<String, dynamic> get driverPermissions {
+    final rawDriversPermissions = widget.permissions['drivers'];
+
+    if (rawDriversPermissions is Map) {
+      return Map<String, dynamic>.from(
+        rawDriversPermissions,
+      );
+    }
+
+    return <String, dynamic>{};
+  }
+
+  bool canViewDrivers() {
+    if (isSuperAdmin) {
+      return true;
+    }
+
+    return driverPermissions['view'] == true;
+  }
+
+  bool canCreateDriver() {
+    if (isSuperAdmin) {
+      return true;
+    }
+
+    return driverPermissions['create'] == true;
+  }
+
+  bool canUpdateDriver() {
+    if (isSuperAdmin) {
+      return true;
+    }
+
+    return driverPermissions['update'] == true;
+  }
+
+  bool canDeleteDriver() {
+    if (isSuperAdmin) {
+      return true;
+    }
+
+    return driverPermissions['delete'] == true;
+  }
 
   @override
   void dispose() {
@@ -35,6 +82,10 @@ class _DriverPageState extends State<DriverPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!canViewDrivers()) {
+      return const _DriverAccessDeniedPage();
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
       body: SafeArea(
@@ -194,7 +245,8 @@ class _DriverPageState extends State<DriverPage> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: cards.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
@@ -209,8 +261,11 @@ class _DriverPageState extends State<DriverPage> {
         return Row(
           children: [
             for (int i = 0; i < cards.length; i++) ...[
-              Expanded(child: _buildSummaryCard(cards[i])),
-              if (i != cards.length - 1) const SizedBox(width: 14),
+              Expanded(
+                child: _buildSummaryCard(cards[i]),
+              ),
+              if (i != cards.length - 1)
+                const SizedBox(width: 14),
             ],
           ],
         );
@@ -263,7 +318,8 @@ class _DriverPageState extends State<DriverPage> {
         });
       },
       decoration: InputDecoration(
-        hintText: 'جستجو بر اساس نام، شماره یا شناسه راننده...',
+        hintText:
+            'جستجو بر اساس نام، شماره یا شناسه راننده...',
         hintStyle: TextStyle(
           color: Colors.grey.shade400,
           fontSize: 12,
@@ -278,6 +334,7 @@ class _DriverPageState extends State<DriverPage> {
                 icon: const Icon(Icons.clear_rounded),
                 onPressed: () {
                   _searchController.clear();
+
                   setState(() {
                     _searchQuery = '';
                   });
@@ -296,7 +353,9 @@ class _DriverPageState extends State<DriverPage> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(color: Colors.grey.shade100),
+          borderSide: BorderSide(
+            color: Colors.grey.shade100,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
@@ -357,7 +416,8 @@ class _DriverPageState extends State<DriverPage> {
       decoration: _cardDecoration(),
       child: isMobile
           ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 _buildFilterTitle(),
                 const SizedBox(height: 14),
@@ -458,12 +518,14 @@ class _DriverPageState extends State<DriverPage> {
                     const SizedBox(height: 10),
                     DriversDataList(
                       key: ValueKey(
-                      '$_searchQuery-$_selectedFilter-${widget.role}',
+                        '$_searchQuery-'
+                        '$_selectedFilter-'
+                        '${widget.role}',
                       ),
-                     searchQuery: _searchQuery,
-                     filterStatus: _selectedFilter,
+                      searchQuery: _searchQuery,
+                      filterStatus: _selectedFilter,
                       role: widget.role,
-                     permissions: widget.permissions,
+                      permissions: widget.permissions,
                     ),
                   ],
                 ),
@@ -544,4 +606,53 @@ class _SummaryData {
     required this.icon,
     required this.color,
   });
+}
+
+class _DriverAccessDeniedPage extends StatelessWidget {
+  const _DriverAccessDeniedPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: Center(
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          constraints: const BoxConstraints(maxWidth: 460),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 56,
+                color: Colors.red,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'دسترسی به بخش رانندگان ندارید.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
