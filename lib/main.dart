@@ -199,7 +199,8 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
+        if (authSnapshot.connectionState ==
+            ConnectionState.waiting) {
           return const _LoadingPage();
         }
 
@@ -209,27 +210,32 @@ class AuthGate extends StatelessWidget {
           return const LoginPage();
         }
 
-        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        return FutureBuilder<
+            DocumentSnapshot<Map<String, dynamic>>>(
           future: FirebaseFirestore.instance
               .collection('admin')
               .doc(user.uid)
               .get(),
           builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
+            if (userSnapshot.connectionState ==
+                ConnectionState.waiting) {
               return const _LoadingPage();
             }
 
             if (userSnapshot.hasError) {
               return _AccessDeniedPage(
-              message: 'خطا در دریافت اطلاعات دسترسی: ${userSnapshot.error}',
-             );
+                message:
+                    'خطا در دریافت اطلاعات دسترسی: '
+                    '${userSnapshot.error}',
+              );
             }
 
             final document = userSnapshot.data;
 
             if (document == null || !document.exists) {
               return const _AccessDeniedPage(
-                message: 'برای این حساب، پروفایل مدیریتی پیدا نشد.',
+                message:
+                    'برای این حساب، پروفایل مدیریتی پیدا نشد.',
               );
             }
 
@@ -237,18 +243,35 @@ class AuthGate extends StatelessWidget {
 
             if (userData == null) {
               return const _AccessDeniedPage(
-                message: 'اطلاعات پروفایل این حساب خالی است.',
+                message:
+                    'اطلاعات پروفایل این حساب خالی است.',
               );
             }
 
             final isActive = userData['active'] == true;
-            final role = userData['role']?.toString() ?? '';
+
+            final role = userData['role']?.toString().trim() ?? '';
+
+            final rawAllowedSections =
+                userData['allowedSections'];
 
             final allowedSections =
-                (userData['allowedSections'] as List<dynamic>?)
-                    ?.map((item) => item.toString())
-                    .toList() ??
-                <String>[];
+                rawAllowedSections is List
+                    ? rawAllowedSections
+                        .map((item) => item.toString().trim())
+                        .where((item) => item.isNotEmpty)
+                        .toList()
+                    : <String>[];
+
+            final rawPermissions =
+                userData['permissions'];
+
+            final permissions =
+                rawPermissions is Map
+                    ? Map<String, dynamic>.from(
+                        rawPermissions,
+                      )
+                    : <String, dynamic>{};
 
             if (!isActive) {
               return const _AccessDeniedPage(
@@ -258,7 +281,8 @@ class AuthGate extends StatelessWidget {
 
             if (role.isEmpty) {
               return const _AccessDeniedPage(
-                message: 'نقش این حساب در Firestore تعیین نشده است.',
+                message:
+                    'نقش این حساب در Firestore تعیین نشده است.',
               );
             }
 
@@ -267,21 +291,23 @@ class AuthGate extends StatelessWidget {
                 currentLocale: context.locale,
                 role: role,
                 allowedSections: const ['all'],
-               permissions: const {},
-             );
+                permissions: permissions,
+              );
             }
 
             if (allowedSections.isEmpty) {
               return const _AccessDeniedPage(
-                message: 'برای این حساب هیچ بخشی تعیین نشده است.',
+                message:
+                    'برای این حساب هیچ بخشی تعیین نشده است.',
               );
             }
 
             return SideNavigationDrawer(
               currentLocale: context.locale,
               role: role,
-             allowedSections: allowedSections,
-           );
+              allowedSections: allowedSections,
+              permissions: permissions,
+            );
           },
         );
       },
