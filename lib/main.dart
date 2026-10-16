@@ -257,17 +257,17 @@ class AuthGate extends StatelessWidget {
 
             final List<String> allowedSections;
 
-             if (rawAllowedSections is List) {
-             allowedSections = rawAllowedSections
-             .map((item) => item.toString().trim())
-              .where((item) => item.isNotEmpty)
-               .toList();
-           } else if (rawAllowedSections is String &&
-              rawAllowedSections.trim().isNotEmpty) {
+            if (rawAllowedSections is List) {
+              allowedSections = rawAllowedSections
+                  .map((item) => item.toString().trim())
+                  .where((item) => item.isNotEmpty)
+                  .toList();
+            } else if (rawAllowedSections is String &&
+                rawAllowedSections.trim().isNotEmpty) {
               allowedSections = [rawAllowedSections.trim()];
-             } else {
-            allowedSections = <String>[];
-           }
+            } else {
+              allowedSections = <String>[];
+            }
 
             final rawPermissions =
                 userData['permissions'];
@@ -360,7 +360,7 @@ class RoleBasedSectionPage extends StatelessWidget {
     );
   }
 
-    String _sectionTitle(String section) {
+  String _sectionTitle(String section) {
     switch (section) {
       case 'dashboard':
         return 'داشبورد';
@@ -461,54 +461,55 @@ class _SectionContent extends StatelessWidget {
   }
 
   String _title(String section) {
-  switch (section) {
-    case 'dashboard':
-      return 'داشبورد';
-    case 'support':
-      return 'صفحه پشتیبانی';
-    case 'drivers':
-      return 'صفحه رانندگان';
-    case 'users':
-      return 'صفحه کاربران';
-    case 'trips':
-      return 'صفحه سفرها';
-    case 'staff':
-      return 'مدیریت کارمندان';
-    case 'commission':
-      return 'صفحه کمیسیون';
-    case 'fare':
-      return 'تنظیمات کرایه';
-    case 'settings':
-      return 'صفحه تنظیمات';
-    default:
-      return 'بخش $section';
-  }
+    switch (section) {
+      case 'dashboard':
+        return 'داشبورد';
+      case 'support':
+        return 'صفحه پشتیبانی';
+      case 'drivers':
+        return 'صفحه رانندگان';
+      case 'users':
+        return 'صفحه کاربران';
+      case 'trips':
+        return 'صفحه سفرها';
+      case 'staff':
+        return 'مدیریت کارمندان';
+      case 'commission':
+        return 'صفحه کمیسیون';
+      case 'fare':
+        return 'تنظیمات کرایه';
+      case 'settings':
+        return 'صفحه تنظیمات';
+      default:
+        return 'بخش $section';
+    }
   }
 
   IconData _icon(String section) {
-  switch (section) {
-    case 'dashboard':
-      return Icons.dashboard_rounded;
-    case 'support':
-      return Icons.support_agent_rounded;
-    case 'drivers':
-      return Icons.drive_eta_rounded;
-    case 'users':
-      return Icons.people_alt_rounded;
-    case 'trips':
-      return Icons.local_taxi_rounded;
-    case 'staff':
-      return Icons.manage_accounts_rounded;
-    case 'commission':
-      return Icons.account_balance_wallet_rounded;
-    case 'fare':
-      return Icons.price_change_rounded;
-    case 'settings':
-      return Icons.settings_rounded;
-    default:
-      return Icons.dashboard_rounded;
+    switch (section) {
+      case 'dashboard':
+        return Icons.dashboard_rounded;
+      case 'support':
+        return Icons.support_agent_rounded;
+      case 'drivers':
+        return Icons.drive_eta_rounded;
+      case 'users':
+        return Icons.people_alt_rounded;
+      case 'trips':
+        return Icons.local_taxi_rounded;
+      case 'staff':
+        return Icons.manage_accounts_rounded;
+      case 'commission':
+        return Icons.account_balance_wallet_rounded;
+      case 'fare':
+        return Icons.price_change_rounded;
+      case 'settings':
+        return Icons.settings_rounded;
+      default:
+        return Icons.dashboard_rounded;
+    }
   }
-  }
+} // <--- این آکولاد بسته که گم شده بود اضافه شد تا بقیه کلاس‌ها بیرون از این کلاس قرار گیرند.
 
 class _LoadingPage extends StatelessWidget {
   const _LoadingPage();
