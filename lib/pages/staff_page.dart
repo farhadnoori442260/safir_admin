@@ -265,8 +265,7 @@ class _StaffPageState extends State<StaffPage> {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return _buildErrorCard(
-          'خطا در دریافت کارمندان:
-           ${snapshot.error}',
+            'خطا در دریافت کارمندان: ${snapshot.error}',
           );
         }
 
