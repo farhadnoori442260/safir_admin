@@ -361,22 +361,29 @@ class RoleBasedSectionPage extends StatelessWidget {
   }
 
   String _sectionTitle(String section) {
-    switch (section) {
-      case 'support':
-        return 'پشتیبانی';
-      case 'drivers':
-        return 'رانندگان';
-      case 'users':
-        return 'کاربران';
-      case 'trips':
-        return 'سفرها';
-      case 'settings':
-        return 'تنظیمات';
-      default:
-        return section;
-    }
+  switch (section) {
+    case 'dashboard':
+      return 'داشبورد';
+    case 'support':
+      return 'پشتیبانی';
+    case 'drivers':
+      return 'رانندگان';
+    case 'users':
+      return 'کاربران';
+    case 'trips':
+      return 'سفرها';
+    case 'staff':
+      return 'مدیریت کارمندان';
+    case 'commission':
+      return 'کمیسیون';
+    case 'fare':
+      return 'تنظیمات کرایه';
+    case 'settings':
+      return 'تنظیمات';
+    default:
+      return section;
   }
-}
+  }
 
 class _SectionContent extends StatelessWidget {
   final String section;
