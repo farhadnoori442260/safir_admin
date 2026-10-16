@@ -184,75 +184,16 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Widget _buildDashboardData(bool isMobile) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _driversStream,
-      builder: (context, driversSnapshot) {
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: _usersStream,
-          builder: (context, usersSnapshot) {
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _ridesStream,
-              builder: (context, ridesSnapshot) {
-                final error = _getFirstError(
-                  driversSnapshot,
-                  usersSnapshot,
-                  ridesSnapshot,
-                );
+  final hasAnyStream =
+      _driversStream != null ||
+      _usersStream != null ||
+      _ridesStream != null;
 
-                if (error != null) {
-                  return _buildErrorPanel(error);
-                }
+  if (!hasAnyStream) {
+    return _buildRoleMessage();
+  }
 
-                final isLoading =
-                    driversSnapshot.connectionState ==
-                        ConnectionState.waiting ||
-                    usersSnapshot.connectionState ==
-                        ConnectionState.waiting ||
-                    ridesSnapshot.connectionState ==
-                        ConnectionState.waiting;
-
-                if (isLoading) {
-                  return _buildLoadingPanel();
-                }
-
-                final drivers =
-                    driversSnapshot.data?.docs ?? <QueryDocumentSnapshot<
-                        Map<String, dynamic>>>[];
-
-                final users =
-                    usersSnapshot.data?.docs ?? <QueryDocumentSnapshot<
-                        Map<String, dynamic>>>[];
-
-                final rides =
-                    ridesSnapshot.data?.docs ?? <QueryDocumentSnapshot<
-                        Map<String, dynamic>>>[];
-
-                final stats = _calculateStats(rides);
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildStatsGrid(
-                      driversCount: drivers.length,
-                      usersCount: users.length,
-                      activeTrips: stats.active,
-                      completedTrips: stats.completed,
-                      isMobile: isMobile,
-                    ),
-                    const SizedBox(height: 26),
-                    _buildContentGrid(
-                      rides: rides,
-                      stats: stats,
-                      isMobile: isMobile,
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        );
-      },
-    );
+  return _buildDashboardStreams(isMobile);
   }
 
   Widget _buildStatsGrid({
