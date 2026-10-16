@@ -485,22 +485,29 @@ class _SectionContent extends StatelessWidget {
   }
 
   IconData _icon(String section) {
-    switch (section) {
-      case 'support':
-        return Icons.support_agent_rounded;
-      case 'drivers':
-        return Icons.drive_eta_rounded;
-      case 'users':
-        return Icons.people_alt_rounded;
-      case 'trips':
-        return Icons.local_taxi_rounded;
-      case 'settings':
-        return Icons.settings_rounded;
-      default:
-        return Icons.dashboard_rounded;
-    }
+  switch (section) {
+    case 'dashboard':
+      return Icons.dashboard_rounded;
+    case 'support':
+      return Icons.support_agent_rounded;
+    case 'drivers':
+      return Icons.drive_eta_rounded;
+    case 'users':
+      return Icons.people_alt_rounded;
+    case 'trips':
+      return Icons.local_taxi_rounded;
+    case 'staff':
+      return Icons.manage_accounts_rounded;
+    case 'commission':
+      return Icons.account_balance_wallet_rounded;
+    case 'fare':
+      return Icons.price_change_rounded;
+    case 'settings':
+      return Icons.settings_rounded;
+    default:
+      return Icons.dashboard_rounded;
   }
-}
+  }
 
 class _LoadingPage extends StatelessWidget {
   const _LoadingPage();
