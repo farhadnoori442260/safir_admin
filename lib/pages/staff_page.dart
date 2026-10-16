@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -242,7 +243,7 @@ class _StaffPageState extends State<StaffPage> {
       decoration: _cardDecoration(),
       child: TextField(
         controller: _searchController,
-        textDirection: TextDirection.rtl,
+        textDirection: ui.TextDirection.rtl,
         decoration: InputDecoration(
           hintText: 'جستجو بر اساس نام، ایمیل یا نقش...',
           prefixIcon: const Icon(Icons.search_rounded),
@@ -264,8 +265,8 @@ class _StaffPageState extends State<StaffPage> {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return _buildErrorCard(
-            'خطا در دریافت کارمندان:
-${snapshot.error}',
+          'خطا در دریافت کارمندان:
+           ${snapshot.error}',
           );
         }
 
@@ -1236,7 +1237,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
             children: [
               TextField(
                 controller: _nameController,
-                textDirection: TextDirection.rtl,
+                textDirection: ui.TextDirection.rtl,
                 decoration: const InputDecoration(
                   labelText: 'نام کارمند',
                   prefixIcon: Icon(Icons.person_outline),
