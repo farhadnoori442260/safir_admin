@@ -49,45 +49,63 @@ class _SideNavigationDrawerState
   }
 
   Widget getActiveScreen() {
-    final langKey = ValueKey(
-      context.locale.languageCode,
-    );
+  final langKey = ValueKey(
+    context.locale.languageCode,
+  );
 
-    switch (currentRoute) {
-      case 'dashboard':
-        return Dashboard(key: langKey);
+  switch (currentRoute) {
+    case 'dashboard':
+      return Dashboard(
+        key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
+      );
 
-      case DriverPage.id:
+    case DriverPage.id:
   return DriverPage(
     key: langKey,
     role: widget.role,
     permissions: widget.permissions,
   );
 
-      case UserPage.id:
-        return UserPage(key: langKey);
+    case UserPage.id:
+      return UserPage(
+        key: langKey,
+      );
 
-      case TripsPage.id:
-        return TripsPage(key: langKey);
+    case TripsPage.id:
+      return TripsPage(
+        key: langKey,
+      );
 
-      case NotificationsPage.id:
-        return NotificationsPage(key: langKey);
+    case NotificationsPage.id:
+      return NotificationsPage(
+        key: langKey,
+      );
 
-      case 'earnings':
-        return EarningsPage(key: langKey);
+    case 'earnings':
+      return EarningsPage(
+        key: langKey,
+      );
 
-      case 'pricing_settings':
-        return PricingSettingsPage(key: langKey);
-        
-        case StaffPage.id:
-          return StaffPage(
-            key: langKey,
-            role: widget.role,
-           );
+    case 'pricing_settings':
+      return PricingSettingsPage(
+        key: langKey,
+      );
 
-      default:
-        return Dashboard(key: langKey);
-    }
+    case StaffPage.id:
+      return StaffPage(
+        key: langKey,
+        role: widget.role,
+      );
+
+    default:
+      return Dashboard(
+        key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
+      );
+  }
   }
 
   Future<void> _logout() async {
