@@ -196,6 +196,138 @@ class _DashboardState extends State<Dashboard> {
   return _buildDashboardStreams(isMobile);
   }
 
+  Widget _buildDashboardStreams(bool isMobile) {
+  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: _driversStream,
+    builder: (context, driversSnapshot) {
+      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _usersStream,
+        builder: (context, usersSnapshot) {
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _ridesStream,
+            builder: (context, ridesSnapshot) {
+              final error = _getFirstError(
+                driversSnapshot,
+                usersSnapshot,
+                ridesSnapshot,
+              );
+
+              if (error != null) {
+                return _buildErrorPanel(error);
+              }
+
+              final isLoading =
+                  (_driversStream != null &&
+                      driversSnapshot.connectionState ==
+                          ConnectionState.waiting) ||
+                  (_usersStream != null &&
+                      usersSnapshot.connectionState ==
+                          ConnectionState.waiting) ||
+                  (_ridesStream != null &&
+                      ridesSnapshot.connectionState ==
+                          ConnectionState.waiting);
+
+              if (isLoading) {
+                return _buildLoadingPanel();
+              }
+
+              final drivers = driversSnapshot.data?.docs ??
+                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+              final users = usersSnapshot.data?.docs ??
+                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+              final rides = ridesSnapshot.data?.docs ??
+                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+              final stats = _calculateStats(rides);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildStatsGrid(
+                    driversCount: drivers.length,
+                    usersCount: users.length,
+                    activeTrips: stats.active,
+                    completedTrips: stats.completed,
+                    isMobile: isMobile,
+                  ),
+                  if (_ridesStream != null) ...[
+                    const SizedBox(height: 26),
+                    _buildContentGrid(
+                      rides: rides,
+                      stats: stats,
+                      isMobile: isMobile,
+                    ),
+                  ],
+                ],
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+  }
+
+  Widget _buildRoleMessage() {
+  String title;
+  String message;
+  IconData icon;
+
+  switch (widget.role) {
+    case 'support':
+      title = 'داشبورد پشتیبانی';
+      message = 'برای مدیریت درخواست‌ها از بخش پشتیبانی استفاده کنید.';
+      icon = Icons.support_agent_rounded;
+      break;
+
+    case 'finance':
+      title = 'داشبورد مالی';
+      message = 'برای مدیریت کمیسیون و کرایه‌ها از منوی مالی استفاده کنید.';
+      icon = Icons.account_balance_wallet_rounded;
+      break;
+
+    default:
+      title = 'داشبورد';
+      message = 'برای این نقش هنوز آماری تعیین نشده است.';
+      icon = Icons.dashboard_rounded;
+  }
+
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(28),
+    decoration: _cardDecoration(),
+    child: Column(
+      children: [
+        Icon(
+          icon,
+          size: 54,
+          color: AppColors.primary,
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    ),
+  );
+  }
+
   Widget _buildStatsGrid({
     required int driversCount,
     required int usersCount,
