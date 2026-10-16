@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_admin_scaffold/admin_scaffold.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/pages/staff_page.dart';
 import 'package:safir_admin/dashboard/dashboard.dart';
 import 'package:safir_admin/pages/driver_page.dart';
 import 'package:safir_admin/pages/earnings_page.dart';
@@ -77,6 +78,12 @@ class _SideNavigationDrawerState
 
       case 'pricing_settings':
         return PricingSettingsPage(key: langKey);
+        
+        case StaffPage.id:
+          return StaffPage(
+            key: langKey,
+            role: widget.role,
+           );
 
       default:
         return Dashboard(key: langKey);
@@ -372,6 +379,16 @@ class _SideNavigationDrawerState
           icon: CupertinoIcons.slider_horizontal_3,
         ),
       );
+    }
+    
+    if (isSuperAdmin) {
+  items.add(
+    AdminMenuItem(
+      title: 'مدیریت کارمندان',
+      route: StaffPage.id,
+      icon: CupertinoIcons.person_3_fill,
+    ),
+  );
     }
 
     return items;
