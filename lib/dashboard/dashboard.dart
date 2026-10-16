@@ -32,9 +32,23 @@ class _DashboardState extends State<Dashboard> {
   }
 
   void _createStreams() {
+  final role = widget.role;
+
+  _driversStream = null;
+  _usersStream = null;
+  _ridesStream = null;
+
+  if (role == 'superAdmin' || role == 'drivers') {
     _driversStream = _firestore.collection('drivers').snapshots();
+  }
+
+  if (role == 'superAdmin' || role == 'passengers') {
     _usersStream = _firestore.collection('users').snapshots();
+  }
+
+  if (role == 'superAdmin' || role == 'operations') {
     _ridesStream = _firestore.collection('rides').snapshots();
+  }
   }
 
   void _refreshDashboard() {
