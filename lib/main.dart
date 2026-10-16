@@ -255,13 +255,19 @@ class AuthGate extends StatelessWidget {
             final rawAllowedSections =
                 userData['allowedSections'];
 
-            final allowedSections =
-                rawAllowedSections is List
-                    ? rawAllowedSections
-                        .map((item) => item.toString().trim())
-                        .where((item) => item.isNotEmpty)
-                        .toList()
-                    : <String>[];
+            final List<String> allowedSections;
+
+             if (rawAllowedSections is List) {
+             allowedSections = rawAllowedSections
+             .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+               .toList();
+           } else if (rawAllowedSections is String &&
+              rawAllowedSections.trim().isNotEmpty) {
+              allowedSections = [rawAllowedSections.trim()];
+             } else {
+            allowedSections = <String>[];
+           }
 
             final rawPermissions =
                 userData['permissions'];
