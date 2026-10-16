@@ -460,20 +460,28 @@ class _SectionContent extends StatelessWidget {
   }
 
   String _title(String section) {
-    switch (section) {
-      case 'support':
-        return 'صفحه پشتیبانی';
-      case 'drivers':
-        return 'صفحه رانندگان';
-      case 'users':
-        return 'صفحه کاربران';
-      case 'trips':
-        return 'صفحه سفرها';
-      case 'settings':
-        return 'صفحه تنظیمات';
-      default:
-        return 'بخش $section';
-    }
+  switch (section) {
+    case 'dashboard':
+      return 'داشبورد';
+    case 'support':
+      return 'صفحه پشتیبانی';
+    case 'drivers':
+      return 'صفحه رانندگان';
+    case 'users':
+      return 'صفحه کاربران';
+    case 'trips':
+      return 'صفحه سفرها';
+    case 'staff':
+      return 'مدیریت کارمندان';
+    case 'commission':
+      return 'صفحه کمیسیون';
+    case 'fare':
+      return 'تنظیمات کرایه';
+    case 'settings':
+      return 'صفحه تنظیمات';
+    default:
+      return 'بخش $section';
+  }
   }
 
   IconData _icon(String section) {
