@@ -5,7 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:safir_admin/constants/app_colors.dart';
 
 class Dashboard extends StatefulWidget {
-  const Dashboard({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const Dashboard({
+    super.key,
+    required this.role,
+    this.permissions = const {},
+  });
 
   @override
   State<Dashboard> createState() => _DashboardState();
