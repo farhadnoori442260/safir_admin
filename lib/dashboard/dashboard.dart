@@ -21,9 +21,9 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  late Stream<QuerySnapshot<Map<String, dynamic>>> _driversStream;
-  late Stream<QuerySnapshot<Map<String, dynamic>>> _usersStream;
-  late Stream<QuerySnapshot<Map<String, dynamic>>> _ridesStream;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _driversStream;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _usersStream;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _ridesStream;
 
   @override
   void initState() {
