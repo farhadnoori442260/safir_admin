@@ -27,7 +27,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
   bool _loadedOnce = false;
 
   DocumentReference<Map<String, dynamic>> get _settingsRef =>
-      FirebaseFirestore.instance.collection('settings').doc('config');
+      FirebaseFirestore.instance.collection('settings').doc('app_config');
 
   @override
   void dispose() {
