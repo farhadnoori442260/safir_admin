@@ -1,3 +1,5 @@
+import 'earnings_page.dart';
+import 'pricing_settings_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
