@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -798,21 +799,45 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
-      // تعیین تاپیک بر اساس منطق فعلی پنل
-      String topic = 'passengers';
+            // دریافت توکن ورود ادمین برای سرور نتلایف
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        _showSnackBar(
+          'لطفاً ابتدا وارد حساب ادمین شوید.',
+          Colors.orange,
+        );
+        return;
+      }
+
+      final idToken = await user.getIdToken();
+
+      if (idToken == null || idToken.isEmpty) {
+        _showSnackBar(
+          'توکن ورود دریافت نشد؛ دوباره وارد حساب شوید.',
+          Colors.red,
+        );
+        return;
+      }
+
+      // انتخاب مقصد مطابق سرور جدید
+      final String topic;
 
       if (_targetGroup == 'drivers') {
         topic = 'drivers';
-      } else if (_targetGroup == 'all') {
+      } else if (_targetGroup == 'users') {
         topic = 'passengers';
+      } else {
+        topic = 'all';
       }
 
       // ارسال درخواست به سرور نتلایف
       final response = await http
           .post(
             Uri.parse(kNotifyFunctionUrl),
-            headers: <String, String>{
+                        headers: <String, String>{
               'Content-Type': 'application/json',
+              'Authorization': 'Bearer $idToken',
             },
             body: jsonEncode({
               'title': title,
