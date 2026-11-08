@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 
 import 'package:safir_admin/constants/app_colors.dart';
 
-/// آدرس سرور نتلایف برای ارسال اعلان‌ها
 const String kNotifyFunctionUrl =
     'https://safir-notify-farhad.netlify.app/.netlify/functions/send-notification';
 
@@ -794,7 +793,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
-      // تعیین تاپیک یا گروه مقصد بر اساس انتخاب ادمین
       String topic = 'passengers';
       if (_targetGroup == 'drivers') {
         topic = 'drivers';
@@ -802,7 +800,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
         topic = 'passengers';
       }
 
-      // ۱. ارسال درخواست مستقیم به سرور نتلایف
       final response = await http.post(
         Uri.parse(kNotifyFunctionUrl),
         headers: <String, String>{
@@ -817,7 +814,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
       final bool isSuccess = response.statusCode == 200;
 
-      // ۲. ثبت رکورد در فایربیس برای تاریخچه
       final notificationReference =
           FirebaseFirestore.instance.collection('notifications').doc();
 
