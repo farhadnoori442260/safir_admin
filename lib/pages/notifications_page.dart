@@ -1,7 +1,13 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import 'package:safir_admin/constants/app_colors.dart';
+
+/// آدرس سرور نتلایف برای ارسال اعلان‌ها
+const String kNotifyFunctionUrl =
+    'https://safir-notify-farhad.netlify.app/.netlify/functions/send-notification';
 
 class NotificationsPage extends StatefulWidget {
   static const String id = 'webPageNotifications';
@@ -19,7 +25,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   String _targetGroup = 'all';
   bool _isSending = false;
 
-  final Stream<QuerySnapshot<Map<String, dynamic>>> _notificationsStream =
+  final Stream<QuerySnapshot>> _notificationsStream =
       FirebaseFirestore.instance
           .collection('notifications')
           .orderBy('createdAt', descending: true)
@@ -154,7 +160,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ),
               const SizedBox(width: 8),
               Text(
-                'ارسال از طریق سرور امن',
+                'ارسال از طریق سرور امن نتلایف',
                 style: TextStyle(
                   color: Colors.grey.shade700,
                   fontSize: 12,
@@ -190,8 +196,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'پس از ثبت اعلان، Cloud Function آن را به گروه انتخاب‌شده ارسال می‌کند. '
-              'کلید FCM نباید در اپ Flutter یا پنل ادمین قرار بگیرد.',
+              'پس از ارسال، سرور نتلایف به‌طور مستقیم اعلان را به گروه انتخاب‌شده در اپلیکیشن منتقل می‌کند.',
               style: TextStyle(
                 color: Colors.blue.shade900,
                 fontSize: 12,
@@ -257,7 +262,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     )
                   : const Icon(Icons.send_rounded, size: 20),
               label: Text(
-                _isSending ? 'در حال ثبت اعلان...' : 'ارسال اعلان',
+                _isSending ? 'در حال ارسال اعلان...' : 'ارسال اعلان',
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -433,15 +438,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Widget _buildNotificationsHistory() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<QuerySnapshot>>(
       stream: _notificationsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-  return _buildStateMessage(
-    icon: Icons.error_outline_rounded,
-    message: 'خطا در دریافت تاریخچه: ${snapshot.error}',
-    color: Colors.red.shade600,
-  );
+          return _buildStateMessage(
+            icon: Icons.error_outline_rounded,
+            message: 'خطا در دریافت تاریخچه: ${snapshot.error}',
+            color: Colors.red.shade600,
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -481,7 +486,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Widget _buildNotificationItem(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    QueryDocumentSnapshot> document,
   ) {
     final data = document.data();
 
@@ -789,6 +794,30 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
+      // تعیین تاپیک یا گروه مقصد بر اساس انتخاب ادمین
+      String topic = 'passengers';
+      if (_targetGroup == 'drivers') {
+        topic = 'drivers';
+      } else if (_targetGroup == 'all') {
+        topic = 'passengers';
+      }
+
+      // ۱. ارسال درخواست مستقیم به سرور نتلایف
+      final response = await http.post(
+        Uri.parse(kNotifyFunctionUrl),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'title': title,
+          'body': body,
+          'topic': topic,
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      final bool isSuccess = response.statusCode == 200;
+
+      // ۲. ثبت رکورد در فایربیس برای تاریخچه
       final notificationReference =
           FirebaseFirestore.instance.collection('notifications').doc();
 
@@ -796,20 +825,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
         'title': title,
         'body': body,
         'targetGroup': _targetGroup,
-        'status': 'pending',
+        'status': isSuccess ? 'sent' : 'failed',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'sentAt': null,
+        'sentAt': isSuccess ? FieldValue.serverTimestamp() : null,
         'isRead': false,
         'isActive': true,
-        'sendAttempts': 0,
+        'sendAttempts': 1,
         'source': 'admin_panel',
       });
 
       await FirebaseFirestore.instance.collection('activities').add({
-        'title': 'ثبت اعلان عمومی',
+        'title': 'ثبت و ارسال اعلان عمومی',
         'subtitle':
-            'پیام برای ${_targetGroupLabel(_targetGroup)} ثبت شد: $title',
+            'پیام برای ${_targetGroupLabel(_targetGroup)} ارسال شد: $title',
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'notification',
       });
@@ -819,22 +848,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
       _titleController.clear();
       _bodyController.clear();
 
-      _showSnackBar(
-        'اعلان ثبت شد و برای ارسال در صف قرار گرفت.',
-        Colors.green,
-      );
+      if (isSuccess) {
+        _showSnackBar(
+          'اعلان با موفقیت به سرور ارسال و فرستاده شد!',
+          Colors.green,
+        );
+      } else {
+        _showSnackBar(
+          'خطا در ارسال از سرور: ${response.body}',
+          Colors.orange,
+        );
+      }
     } on FirebaseException catch (e) {
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در ثبت اعلان: ${e.message ?? e.code}',
+        'خطا در فایربیس: ${e.message ?? e.code}',
         Colors.red,
       );
     } catch (e) {
       if (!mounted) return;
 
       _showSnackBar(
-        'خطا در ثبت اعلان: $e',
+        'خطا در ارتباط با سرور: $e',
         Colors.red,
       );
     } finally {
@@ -865,7 +901,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       _showSnackBar(
         status == 'disabled'
             ? 'اعلان غیرفعال شد.'
-            : 'اعلان برای ارسال مجدد در صف قرار گرفت.',
+            : 'اعلان به‌روزرسانی شد.',
         status == 'disabled' ? Colors.orange : Colors.green,
       );
     } catch (e) {
