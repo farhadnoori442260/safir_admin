@@ -1,10 +1,12 @@
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:safir_admin/constants/app_colors.dart';
 
+/// آدرس سرور نتلایف برای ارسال اعلان‌ها
 const String kNotifyFunctionUrl =
     'https://safir-notify-farhad.netlify.app/.netlify/functions/send-notification';
 
@@ -24,7 +26,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   String _targetGroup = 'all';
   bool _isSending = false;
 
-  final Stream<QuerySnapshot>> _notificationsStream =
+  final Stream<QuerySnapshot<Map<String, dynamic>>> _notificationsStream =
       FirebaseFirestore.instance
           .collection('notifications')
           .orderBy('createdAt', descending: true)
@@ -437,7 +439,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Widget _buildNotificationsHistory() {
-    return StreamBuilder<QuerySnapshot>>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _notificationsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -461,7 +463,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
           );
         }
 
-        final documents = snapshot.data?.docs ?? [];
+        final documents = snapshot.data?.docs ??
+            <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
         if (documents.isEmpty) {
           return _buildStateMessage(
@@ -485,7 +488,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Widget _buildNotificationItem(
-    QueryDocumentSnapshot> document,
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data();
 
@@ -773,6 +776,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
       },
     );
 
+    if (!mounted) return;
+
     if (confirmed == true) {
       await _createNotification();
     }
@@ -793,27 +798,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
+      // تعیین تاپیک بر اساس منطق فعلی پنل
       String topic = 'passengers';
+
       if (_targetGroup == 'drivers') {
         topic = 'drivers';
       } else if (_targetGroup == 'all') {
         topic = 'passengers';
       }
 
-      final response = await http.post(
-        Uri.parse(kNotifyFunctionUrl),
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'title': title,
-          'body': body,
-          'topic': topic,
-        }),
-      ).timeout(const Duration(seconds: 20));
+      // ارسال درخواست به سرور نتلایف
+      final response = await http
+          .post(
+            Uri.parse(kNotifyFunctionUrl),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'title': title,
+              'body': body,
+              'topic': topic,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
 
       final bool isSuccess = response.statusCode == 200;
 
+      // ثبت رکورد در فایربیس برای تاریخچه
       final notificationReference =
           FirebaseFirestore.instance.collection('notifications').doc();
 
