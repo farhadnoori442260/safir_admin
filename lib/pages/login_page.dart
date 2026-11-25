@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/theme/admin_theme_controller.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class LoginPage extends StatefulWidget {
   static const String id = 'loginPage';
@@ -31,46 +33,28 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loginAdmin() async {
     FocusScope.of(context).unfocus();
 
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
       );
-
-      // بعد از ورود، main.dart به‌وسیله authStateChanges
-      // خودش SideNavigationDrawer را نمایش می‌دهد.
-      // اینجا Navigator استفاده نمی‌کنیم.
+      // بعد از ورود، main.dart با authStateChanges صفحهٔ اصلی را نشان می‌دهد.
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-
-      _showMessage(
-        _authErrorMessage(e),
-        isError: true,
-      );
-    } catch (e) {
+      showAdminSnack(context, _authErrorMessage(e), tone: AdminTone.error);
+    } catch (_) {
       if (!mounted) return;
-
-      _showMessage(
+      showAdminSnack(
+        context,
         'خطای غیرمنتظره رخ داد. دوباره تلاش کنید.',
-        isError: true,
+        tone: AdminTone.error,
       );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -78,51 +62,24 @@ class _LoginPageState extends State<LoginPage> {
     switch (error.code) {
       case 'user-not-found':
         return 'کاربری با این ایمیل یافت نشد.';
-
       case 'wrong-password':
       case 'invalid-credential':
         return 'ایمیل یا رمز عبور اشتباه است.';
-
       case 'invalid-email':
         return 'فرمت ایمیل معتبر نیست.';
-
       case 'user-disabled':
         return 'این حساب غیرفعال شده است.';
-
       case 'too-many-requests':
         return 'تلاش‌های ناموفق زیاد است. چند دقیقه بعد دوباره امتحان کنید.';
-
       case 'operation-not-allowed':
         return 'ورود با ایمیل و رمز عبور در Firebase فعال نیست.';
-
       case 'network-request-failed':
         return 'اتصال اینترنت را بررسی کنید.';
-
       case 'requires-recent-login':
         return 'لطفاً دوباره وارد حساب شوید.';
-
       default:
         return 'ورود انجام نشد. کد خطا: ${error.code}';
     }
-  }
-
-  void _showMessage(
-    String message, {
-    required bool isError,
-  }) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
   }
 
   InputDecoration _inputDecoration({
@@ -130,112 +87,82 @@ class _LoginPageState extends State<LoginPage> {
     required IconData icon,
     Widget? suffixIcon,
   }) {
+    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: c, width: w),
+        );
+
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-      ),
+      labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+      prefixIcon: Icon(icon, color: AppColors.brand),
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 1.5,
-        ),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-        ),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 1.5,
-        ),
-      ),
+      fillColor: AppColors.surfaceAlt,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: border(AppColors.border),
+      enabledBorder: border(AppColors.border),
+      focusedBorder: border(AppColors.brand, 1.5),
+      errorBorder: border(AppColors.danger),
+      focusedErrorBorder: border(AppColors.danger, 1.5),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isMobile = constraints.maxWidth < 700;
+      backgroundColor: AppColors.bg,
+      body: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 700;
 
-          return Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? 18 : 32),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 460,
+              return Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isMobile ? 18 : 32),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: _buildLoginCard(isMobile),
+                  ),
                 ),
-                child: _buildLoginCard(isMobile),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+          const PositionedDirectional(
+            top: 12,
+            end: 12,
+            child: SafeArea(child: AdminThemeToggleButton()),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildLoginCard(bool isMobile) {
     return Container(
-      padding: EdgeInsets.all(isMobile ? 22 : 34),
+      padding: EdgeInsets.all(isMobile ? 22 : 32),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: Colors.grey.shade100,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.10),
-            blurRadius: 30,
-            offset: const Offset(0, 14),
-          ),
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
       ),
       child: Form(
         key: _formKey,
         child: Column(
           children: [
             _buildBrandHeader(),
-            const SizedBox(height: 30),
-            _buildEmailField(),
-            const SizedBox(height: 18),
-            _buildPasswordField(),
             const SizedBox(height: 28),
+            _buildEmailField(),
+            const SizedBox(height: 16),
+            _buildPasswordField(),
+            const SizedBox(height: 26),
             _buildLoginButton(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Text(
-              'دسترسی این بخش فقط برای مدیر سیستم است',
+              'دسترسی این بخش فقط برای مدیران سیستم است',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 11,
-              ),
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
           ],
         ),
@@ -247,39 +174,25 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       children: [
         Container(
-          width: 82,
-          height: 82,
+          width: 76,
+          height: 76,
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary,
-                AppColors.primary.withOpacity(0.72),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(22),
           ),
           child: const Icon(
             Icons.admin_panel_settings_rounded,
             color: Colors.white,
-            size: 43,
+            size: 40,
           ),
         ),
-        const SizedBox(height: 20),
-        const Text(
+        const SizedBox(height: 18),
+        Text(
           'ورود به پنل مدیریت سفیر',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: AppColors.primary,
-            fontSize: 22,
+            color: AppColors.textPrimary,
+            fontSize: 21,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -288,7 +201,7 @@ class _LoginPageState extends State<LoginPage> {
           'برای ادامه، حساب مدیریتی خود را وارد کنید',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.grey.shade600,
+            color: AppColors.textSecondary,
             fontSize: 13,
             height: 1.5,
           ),
@@ -303,30 +216,19 @@ class _LoginPageState extends State<LoginPage> {
       enabled: !_isLoading,
       keyboardType: TextInputType.emailAddress,
       textInputAction: TextInputAction.next,
-      autofillHints: const [
-        AutofillHints.username,
-        AutofillHints.email,
-      ],
+      style: TextStyle(color: AppColors.textPrimary),
+      autofillHints: const [AutofillHints.username, AutofillHints.email],
       decoration: _inputDecoration(
         label: 'ایمیل مدیر',
         icon: Icons.email_outlined,
       ),
       validator: (value) {
         final email = value?.trim() ?? '';
+        if (email.isEmpty) return 'ایمیل را وارد کنید';
 
-        if (email.isEmpty) {
-          return 'ایمیل را وارد کنید';
-        }
-
-        final emailRegex = RegExp(
-          r'^[^@s]+@[^@s]+.[^@s]+$',
-        );
-
-        if (!emailRegex.hasMatch(email)) {
-          return 'ایمیل معتبر وارد کنید';
-        }
-
-        return null;
+        // قبلاً regex اشتباه بود (\s و \. بدون بک‌اسلش) و ایمیل درست را رد می‌کرد.
+        final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+        return ok ? null : 'ایمیل معتبر وارد کنید';
       },
     );
   }
@@ -337,45 +239,30 @@ class _LoginPageState extends State<LoginPage> {
       enabled: !_isLoading,
       obscureText: _obscurePassword,
       textInputAction: TextInputAction.done,
-      autofillHints: const [
-        AutofillHints.password,
-      ],
+      style: TextStyle(color: AppColors.textPrimary),
+      autofillHints: const [AutofillHints.password],
       onFieldSubmitted: (_) {
-        if (!_isLoading) {
-          _loginAdmin();
-        }
+        if (!_isLoading) _loginAdmin();
       },
       decoration: _inputDecoration(
         label: 'رمز عبور',
         icon: Icons.lock_outline_rounded,
         suffixIcon: IconButton(
-          tooltip: _obscurePassword
-              ? 'نمایش رمز عبور'
-              : 'پنهان‌کردن رمز عبور',
+          tooltip: _obscurePassword ? 'نمایش رمز عبور' : 'پنهان‌کردن رمز عبور',
           icon: Icon(
             _obscurePassword
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            color: Colors.grey.shade600,
+            color: AppColors.textMuted,
           ),
           onPressed: _isLoading
               ? null
-              : () {
-                  setState(() {
-                    _obscurePassword = !_obscurePassword;
-                  });
-                },
+              : () => setState(() => _obscurePassword = !_obscurePassword),
         ),
       ),
       validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'رمز عبور را وارد کنید';
-        }
-
-        if (value.length < 6) {
-          return 'رمز عبور باید حداقل ۶ حرف باشد';
-        }
-
+        if (value == null || value.isEmpty) return 'رمز عبور را وارد کنید';
+        if (value.length < 6) return 'رمز عبور باید حداقل ۶ حرف باشد';
         return null;
       },
     );
@@ -384,13 +271,13 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildLoginButton() {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      height: 52,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _loginAdmin,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: AppColors.primary.withOpacity(0.55),
+          backgroundColor: AppColors.accentButton,
+          foregroundColor: AppColors.buttonText,
+          disabledBackgroundColor: AppColors.accentButton.withOpacity(0.55),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -416,10 +303,7 @@ class _LoginPageState extends State<LoginPage> {
                     SizedBox(width: 10),
                     Text(
                       'ورود به سیستم',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
