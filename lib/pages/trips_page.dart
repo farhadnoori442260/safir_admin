@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
 import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 // ════════════════════════════════════════════════════════════
 //  گروه‌های سفر
@@ -41,7 +42,14 @@ const Duration _searchExpiry = Duration(minutes: 10);
 class TripsPage extends StatefulWidget {
   static const String id = 'webPageTrips';
 
-  const TripsPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const TripsPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<TripsPage> createState() => _TripsPageState();
@@ -63,10 +71,39 @@ class _TripsPageState extends State<TripsPage>
     super.dispose();
   }
 
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'trips',
+        key: 'view',
+      );
+
+  bool get _canCancel => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'trips',
+        key: 'update',
+      );
+
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'شما اجازهٔ مشاهدهٔ بخش سفرها را ندارید.',
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -75,10 +112,10 @@ class _TripsPageState extends State<TripsPage>
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: const [
-                  _TripsTab(group: _TripGroup.active),
-                  _TripsTab(group: _TripGroup.completed),
-                  _TripsTab(group: _TripGroup.cancelled),
+                children: [
+                  _TripsTab(group: _TripGroup.active, canCancel: _canCancel),
+                  _TripsTab(group: _TripGroup.completed, canCancel: _canCancel),
+                  _TripsTab(group: _TripGroup.cancelled, canCancel: _canCancel),
                 ],
               ),
             ),
@@ -96,22 +133,8 @@ class _TripsPageState extends State<TripsPage>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primary,
-                  AppColors.primary.withOpacity(0.72),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.20),
-                  blurRadius: 14,
-                  offset: const Offset(0, 7),
-                ),
-              ],
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
               Icons.alt_route_rounded,
@@ -125,9 +148,9 @@ class _TripsPageState extends State<TripsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'active_rides'.tr(),
-                  style: const TextStyle(
-                    color: AppColors.primary,
+                  'سفرها',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -138,7 +161,7 @@ class _TripsPageState extends State<TripsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: AppColors.textSecondary,
                     fontSize: 12.5,
                   ),
                 ),
@@ -154,20 +177,20 @@ class _TripsPageState extends State<TripsPage>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: AppColors.border),
       ),
       child: TabBar(
         controller: _tabController,
         indicatorSize: TabBarIndicatorSize.tab,
         indicator: BoxDecoration(
-          color: AppColors.primary,
+          color: AppColors.accentButton,
           borderRadius: BorderRadius.circular(13),
         ),
         dividerColor: Colors.transparent,
         labelColor: Colors.white,
-        unselectedLabelColor: Colors.grey.shade700,
+        unselectedLabelColor: AppColors.textSecondary,
         labelStyle: const TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 13,
@@ -208,8 +231,9 @@ class _TripsPageState extends State<TripsPage>
 
 class _TripsTab extends StatefulWidget {
   final _TripGroup group;
+  final bool canCancel;
 
-  const _TripsTab({required this.group});
+  const _TripsTab({required this.group, required this.canCancel});
 
   @override
   State<_TripsTab> createState() => _TripsTabState();
@@ -370,8 +394,8 @@ class _TripsTabState extends State<_TripsTab>
       },
       decoration: InputDecoration(
         hintText: 'جستجو: مسافر، راننده، مبدأ، مقصد یا کد سفر...',
-        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
+        hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        prefixIcon: Icon(Icons.search_rounded, color: AppColors.brand),
         suffixIcon: _query.isNotEmpty
             ? IconButton(
                 tooltip: 'پاک کردن',
@@ -385,7 +409,7 @@ class _TripsTabState extends State<_TripsTab>
               )
             : null,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -396,11 +420,11 @@ class _TripsTabState extends State<_TripsTab>
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade100),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.3),
+          borderSide: BorderSide(color: AppColors.brand, width: 1.3),
         ),
       ),
     );
@@ -409,19 +433,19 @@ class _TripsTabState extends State<_TripsTab>
       final Widget liveBadge = Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade100),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.sync_rounded, color: Colors.green.shade600, size: 19),
+            Icon(Icons.sync_rounded, color: AppColors.ok, size: 19),
             const SizedBox(width: 7),
             Text(
               'به‌روزرسانی زنده',
               style: TextStyle(
-                color: Colors.grey.shade700,
+                color: AppColors.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -447,17 +471,17 @@ class _TripsTabState extends State<_TripsTab>
     final Widget periodField = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: AppColors.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _period,
           isExpanded: true,
-          icon: const Icon(
+          icon: Icon(
             Icons.keyboard_arrow_down_rounded,
-            color: AppColors.primary,
+            color: AppColors.brand,
           ),
           onChanged: (String? value) {
             if (value == null || value == _period) return;
@@ -485,8 +509,8 @@ class _TripsTabState extends State<_TripsTab>
         icon: const Icon(Icons.refresh_rounded, size: 19),
         label: const Text('به‌روزرسانی'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
+          foregroundColor: AppColors.brand,
+          side: BorderSide(color: AppColors.brand),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -523,7 +547,7 @@ class _TripsTabState extends State<_TripsTab>
         if (snapshot.hasError) {
           return _buildStateBox(
             icon: Icons.error_outline_rounded,
-            color: Colors.red.shade600,
+            color: AppColors.danger,
             message: _friendlyError(snapshot.error.toString()),
             selectable: true,
           );
@@ -547,7 +571,7 @@ class _TripsTabState extends State<_TripsTab>
     if (_error != null && _docs.isEmpty) {
       return _buildStateBox(
         icon: Icons.error_outline_rounded,
-        color: Colors.red.shade600,
+        color: AppColors.danger,
         message: _friendlyError(_error!),
         selectable: true,
       );
@@ -579,7 +603,7 @@ class _TripsTabState extends State<_TripsTab>
     if (allItems.isEmpty) {
       return _buildStateBox(
         icon: Icons.route_outlined,
-        color: Colors.grey.shade500,
+        color: AppColors.textMuted,
         message: _emptyMessage(),
       );
     }
@@ -589,7 +613,7 @@ class _TripsTabState extends State<_TripsTab>
         children: [
           _buildStateBox(
             icon: Icons.search_off_rounded,
-            color: Colors.grey.shade500,
+            color: AppColors.textMuted,
             message: 'نتیجه‌ای در سفرهای بارگذاری‌شده پیدا نشد',
           ),
           if (showLoadMore && _hasMore) ...[
@@ -614,7 +638,7 @@ class _TripsTabState extends State<_TripsTab>
           const SizedBox(height: 10),
           Text(
             _friendlyError(_error!),
-            style: TextStyle(color: Colors.red.shade600, fontSize: 12),
+            style: TextStyle(color: AppColors.danger, fontSize: 12),
           ),
         ],
       ],
@@ -657,14 +681,14 @@ class _TripsTabState extends State<_TripsTab>
             (String text) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
+                color: AppColors.brandSoft,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
                 text,
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 11.5,
+                style: TextStyle(
+                  color: AppColors.brand,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -679,19 +703,19 @@ class _TripsTabState extends State<_TripsTab>
       child: OutlinedButton.icon(
         onPressed: _isLoading ? null : () => _loadPage(),
         icon: _isLoading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.primary,
+                  color: AppColors.brand,
                 ),
               )
             : const Icon(Icons.expand_more_rounded),
         label: Text(_isLoading ? 'در حال بارگذاری...' : 'بارگذاری سفرهای بیشتر'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
+          foregroundColor: AppColors.brand,
+          side: BorderSide(color: AppColors.brand),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -796,12 +820,8 @@ class _TripsTabState extends State<_TripsTab>
                 Container(
                   height: 50,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primary,
-                        AppColors.primary.withOpacity(0.82),
-                      ],
-                    ),
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: columns
@@ -813,9 +833,9 @@ class _TripsTabState extends State<_TripsTab>
                               child: Text(
                                 c.title,
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12.5,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -840,9 +860,9 @@ class _TripsTabState extends State<_TripsTab>
                       child: Container(
                         constraints: const BoxConstraints(minHeight: 66),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.grey.shade100),
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: Row(
                           children: columns
@@ -897,8 +917,8 @@ class _TripsTabState extends State<_TripsTab>
                             child: Text(
                               _displayDateText(item),
                               style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -920,14 +940,14 @@ class _TripsTabState extends State<_TripsTab>
                         children: [
                           Icon(
                             Icons.payments_outlined,
-                            color: Colors.grey.shade500,
+                            color: AppColors.textMuted,
                             size: 18,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'کرایه',
                             style: TextStyle(
-                              color: Colors.grey.shade600,
+                              color: AppColors.textSecondary,
                               fontSize: 12,
                             ),
                           ),
@@ -941,14 +961,14 @@ class _TripsTabState extends State<_TripsTab>
                           children: [
                             Icon(
                               Icons.percent_rounded,
-                              color: Colors.grey.shade500,
+                              color: AppColors.textMuted,
                               size: 18,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               'کمیسیون',
                               style: TextStyle(
-                                color: Colors.grey.shade600,
+                                color: AppColors.textSecondary,
                                 fontSize: 12,
                               ),
                             ),
@@ -975,13 +995,13 @@ class _TripsTabState extends State<_TripsTab>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: AppColors.primary, size: 18),
+        Icon(icon, color: AppColors.brand, size: 18),
         const SizedBox(width: 8),
         SizedBox(
           width: 48,
           child: Text(
             title,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ),
         Expanded(
@@ -989,7 +1009,11 @@ class _TripsTabState extends State<_TripsTab>
             value,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -1008,9 +1032,9 @@ class _TripsTabState extends State<_TripsTab>
         shortId,
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
+        style: TextStyle(
+          color: AppColors.brand,
+          fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -1027,7 +1051,7 @@ class _TripsTabState extends State<_TripsTab>
       child: Text(
         _displayDateText(item),
         textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
       ),
     );
   }
@@ -1039,7 +1063,7 @@ class _TripsTabState extends State<_TripsTab>
         maxLines: 2,
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: Colors.grey.shade800, fontSize: 11),
+        style: TextStyle(color: AppColors.textPrimary, fontSize: 12),
       ),
     );
   }
@@ -1049,9 +1073,9 @@ class _TripsTabState extends State<_TripsTab>
       child: Text(
         '${AdminFormat.money(value)} افغانی',
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
+        style: TextStyle(
+          color: AppColors.brand,
+          fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -1073,19 +1097,19 @@ class _TripsTabState extends State<_TripsTab>
       case 'settled':
         return _chip(
           text: 'تصفیه‌شده',
-          color: Colors.green,
+          color: AppColors.ok,
           icon: Icons.check_circle_outline_rounded,
         );
       case 'unpaid':
         return _chip(
           text: 'پرداخت‌نشده',
-          color: Colors.orange.shade800,
+          color: AppColors.warning,
           icon: Icons.hourglass_bottom_rounded,
         );
       default:
         return _chip(
           text: 'ثبت‌نشده',
-          color: Colors.grey,
+          color: AppColors.textMuted,
           icon: Icons.help_outline_rounded,
         );
     }
@@ -1116,7 +1140,7 @@ class _TripsTabState extends State<_TripsTab>
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: color,
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1134,8 +1158,8 @@ class _TripsTabState extends State<_TripsTab>
       width: double.infinity,
       padding: const EdgeInsets.all(48),
       decoration: _cardDecoration(),
-      child: const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
+      child: Center(
+        child: CircularProgressIndicator(color: AppColors.brand),
       ),
     );
   }
@@ -1147,7 +1171,7 @@ class _TripsTabState extends State<_TripsTab>
     bool selectable = false,
   }) {
     final TextStyle style = TextStyle(
-      color: Colors.grey.shade700,
+      color: AppColors.textSecondary,
       fontSize: 13,
       height: 1.6,
     );
@@ -1192,7 +1216,7 @@ class _TripsTabState extends State<_TripsTab>
 
   void _openDetails(_TripItem item) {
     final List<MapEntry<String, String>> rows = item.detailRows();
-    final bool canAdminCancel = item.isActiveStatus;
+    final bool canAdminCancel = item.isActiveStatus && widget.canCancel;
 
     showDialog<void>(
       context: context,
@@ -1203,7 +1227,7 @@ class _TripsTabState extends State<_TripsTab>
           ),
           title: Row(
             children: [
-              const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+              Icon(Icons.receipt_long_rounded, color: AppColors.brand),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -1234,7 +1258,7 @@ class _TripsTabState extends State<_TripsTab>
                               child: Text(
                                 row.key,
                                 style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                  color: AppColors.textSecondary,
                                   fontSize: 12,
                                 ),
                               ),
@@ -1242,8 +1266,9 @@ class _TripsTabState extends State<_TripsTab>
                             Expanded(
                               child: SelectableText(
                                 row.value,
-                                style: const TextStyle(
-                                  fontSize: 12.5,
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   height: 1.45,
                                 ),
@@ -1264,10 +1289,10 @@ class _TripsTabState extends State<_TripsTab>
                   Navigator.pop(dialogContext);
                   _adminCancel(item);
                 },
-                icon: const Icon(Icons.block_rounded, color: Colors.red),
-                label: const Text(
+                icon: Icon(Icons.block_rounded, color: AppColors.danger),
+                label: Text(
                   'لغو سفر توسط ادمین',
-                  style: TextStyle(color: Colors.red),
+                  style: TextStyle(color: AppColors.danger),
                 ),
               ),
             TextButton(
@@ -1302,7 +1327,7 @@ class _TripsTabState extends State<_TripsTab>
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: AppColors.danger,
                 foregroundColor: Colors.white,
               ),
               child: const Text('لغو سفر'),
@@ -1326,36 +1351,25 @@ class _TripsTabState extends State<_TripsTab>
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('سفر لغو شد'),
-          backgroundColor: Colors.green,
-        ),
+      AdminLog.write(
+        action: 'trip_cancelled_by_admin',
+        targetType: 'ride',
+        targetId: item.id,
       );
+
+      showAdminSnack(context, 'سفر لغو شد');
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('لغو سفر انجام نشد: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAdminSnack(context, 'لغو سفر انجام نشد: $e', tone: AdminTone.error);
     }
   }
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.grey.shade100),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 }
@@ -1609,23 +1623,23 @@ class _TripItem {
   Color get statusColor {
     switch (status) {
       case 'searching':
-        return isStaleSearching ? Colors.red : Colors.orange.shade800;
+        return isStaleSearching ? AppColors.danger : AppColors.warning;
       case 'accepted':
-        return Colors.blue;
+        return AppColors.info;
       case 'arrived':
-        return Colors.deepPurple;
+        return AppColors.info;
       case 'ontrip':
       case 'on_trip':
-        return Colors.indigo;
+        return AppColors.brand;
       case 'completed':
       case 'ended':
-        return Colors.green;
+        return AppColors.ok;
       case 'cancelled_by_driver':
       case 'cancelled_by_passenger':
       case 'cancelled':
-        return Colors.red;
+        return AppColors.danger;
       default:
-        return Colors.grey;
+        return AppColors.textMuted;
     }
   }
 
