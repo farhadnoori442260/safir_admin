@@ -1,331 +1,218 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class TripsDataList extends StatefulWidget {
-  const TripsDataList({super.key});
+  final String searchQuery;
+
+  const TripsDataList({super.key, this.searchQuery = ''});
 
   @override
   State<TripsDataList> createState() => _TripsDataListState();
 }
 
 class _TripsDataListState extends State<TripsDataList> {
-  final Stream<QuerySnapshot<Map<String, dynamic>>> _tripsStream =
-      FirebaseFirestore.instance.collection('rides').snapshots();
+  // فقط سفرهای تمام‌شده، حداکثر ۲۰۰ مورد (به‌جای خواندن کل کالکشن).
+  final Stream<QuerySnapshot<Map<String, dynamic>>> _stream = FirebaseFirestore
+      .instance
+      .collection('rides')
+      .where('status', whereIn: const ['completed', 'ended', 'finished'])
+      .limit(200)
+      .snapshots();
 
   bool _isOpeningMap = false;
+
+  static const _dateKeys = [
+    'completedAt',
+    'completed_at',
+    'endedAt',
+    'ended_at',
+    'updatedAt',
+    'updated_at',
+    'publishDateTime',
+    'time',
+    'createdAt',
+    'created_at',
+  ];
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _tripsStream,
+      stream: _stream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _buildStateMessage(
+          return AdminStateMessage(
             icon: Icons.error_outline_rounded,
-            message: 'خطا در خواندن سفرها:
-${snapshot.error}',
-            color: Colors.red.shade600,
+            message: 'خطا در خواندن سفرها:\n${snapshot.error}',
+            color: AppColors.danger,
           );
         }
-
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(42),
-            child: Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
-          );
+          return const AdminLoading();
         }
 
-        final documents = snapshot.data?.docs ?? [];
-
-        final completedTrips = documents.where((document) {
-          final status = _normalizeStatus(
-            _readText(
-              document.data(),
-              ['status'],
-              fallback: '',
-            ),
-          );
-
-          return status == 'completed' ||
-              status == 'ended' ||
-              status == 'finished';
-        }).toList();
-
-        if (completedTrips.isEmpty) {
-          return _buildStateMessage(
+        final docs = (snapshot.data?.docs ?? []).toList();
+        if (docs.isEmpty) {
+          return const AdminStateMessage(
             icon: Icons.route_outlined,
-            message: 'no_completed_trips'.tr(),
-            color: Colors.grey.shade500,
+            message: 'هنوز سفر تکمیل‌شده‌ای ثبت نشده است',
           );
         }
 
-        completedTrips.sort((a, b) {
-          final aTime = _readTimestamp(a.data());
-          final bTime = _readTimestamp(b.data());
-
-          return (bTime?.millisecondsSinceEpoch ?? 0)
-              .compareTo(aTime?.millisecondsSinceEpoch ?? 0);
+        docs.sort((a, b) {
+          final x = _timestamp(a.data())?.millisecondsSinceEpoch ?? 0;
+          final y = _timestamp(b.data())?.millisecondsSinceEpoch ?? 0;
+          return y.compareTo(x);
         });
+
+        final trips = docs
+            .map((d) => _parse(d.id, d.data()))
+            .where(_matches)
+            .toList();
+
+        if (trips.isEmpty) {
+          return const AdminStateMessage(
+            icon: Icons.search_off_rounded,
+            message: 'نتیجه‌ای با این مشخصات یافت نشد',
+          );
+        }
 
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 16),
-          itemCount: completedTrips.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            return _buildTripRow(
-              context,
-              completedTrips[index],
-            );
-          },
+          itemCount: trips.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) => _row(context, trips[i]),
         );
       },
     );
   }
 
-  Widget _buildTripRow(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
-  ) {
-    final trip = _parseTrip(
-      document.id,
-      document.data(),
-    );
+  bool _matches(_Trip t) {
+    final q = widget.searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return t.id.toLowerCase().contains(q) ||
+        t.passenger.toLowerCase().contains(q) ||
+        t.driver.toLowerCase().contains(q) ||
+        t.car.toLowerCase().contains(q);
+  }
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 78),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.025),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
+  Widget _row(BuildContext context, _Trip t) {
+    return AdminCard(
+      minHeight: 76,
+      child: Row(
+        children: [
+          _cell(20, _code(t.id)),
+          _cell(15, _iconText(t.passenger, Icons.person_outline_rounded)),
+          _cell(15, _iconText(t.driver, Icons.local_taxi_outlined)),
+          _cell(15, _iconText(t.car, Icons.directions_car_outlined)),
+          _cell(16, _iconText(t.dateText, Icons.schedule_rounded)),
+          _cell(12, _fare(t.fare)),
+          _cell(18, _mapButton(context, t)),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
-        child: Row(
-          children: [
-            _dataCell(
-              flex: 20,
-              child: _buildTripCode(trip.id),
-            ),
-            _dataCell(
-              flex: 15,
-              child: _buildPersonCell(
-                trip.passengerName,
-                Icons.person_outline_rounded,
-              ),
-            ),
-            _dataCell(
-              flex: 15,
-              child: _buildPersonCell(
-                trip.driverName,
-                Icons.local_taxi_outlined,
-              ),
-            ),
-            _dataCell(
-              flex: 15,
-              child: _buildSimpleCell(
-                trip.carDetails,
-                Icons.directions_car_outlined,
-              ),
-            ),
-            _dataCell(
-              flex: 16,
-              child: _buildSimpleCell(
-                trip.dateText,
-                Icons.schedule_rounded,
-              ),
-            ),
-            _dataCell(
-              flex: 12,
-              child: _buildFare(trip.fare),
-            ),
-            _dataCell(
-              flex: 18,
-              child: _buildMapButton(
-                context: context,
-                trip: trip,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _dataCell({
-    required int flex,
-    required Widget child,
-  }) {
-    return Expanded(
-      flex: flex,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: child,
-      ),
-    );
-  }
+  Widget _cell(int flex, Widget child) => Expanded(
+        flex: flex,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: child,
+        ),
+      );
 
-  Widget _buildTripCode(String id) {
-    final shortId = id.length > 8 ? id.substring(0, 8) : id;
-
+  Widget _code(String id) {
+    final short = id.length > 8 ? id.substring(0, 8) : id;
     return Tooltip(
       message: id,
       child: Text(
-        shortId,
+        short,
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+        style: TextStyle(
+          color: AppColors.brand,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
 
-  Widget _buildPersonCell(String value, IconData icon) {
+  Widget _iconText(String value, IconData icon) {
     return Row(
       children: [
-        Icon(
-          icon,
-          color: Colors.grey.shade500,
-          size: 17,
-        ),
+        Icon(icon, color: AppColors.textMuted, size: 17),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             value,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 11,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSimpleCell(String value, IconData icon) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          color: AppColors.primary,
-          size: 16,
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFare(String fare) {
+  Widget _fare(String fare) {
     return Text(
-      '$fare ${'afghani_currency'.tr()}',
+      '${_money(fare)} افغانی',
       textAlign: TextAlign.center,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        color: AppColors.primary,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
+      style: TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
 
-  Widget _buildMapButton({
-    required BuildContext context,
-    required _CompletedTrip trip,
-  }) {
-    final hasCoordinates = trip.hasCoordinates;
+  Widget _mapButton(BuildContext context, _Trip t) {
+    final enabled = t.hasCoordinates;
+    final color = enabled ? AppColors.brand : AppColors.textMuted;
 
     return Tooltip(
-      message: hasCoordinates
-          ? 'نمایش مسیر روی نقشه'
-          : 'مختصات مسیر ثبت نشده است',
+      message: enabled ? 'نمایش مسیر روی نقشه' : 'مختصات مسیر ثبت نشده است',
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: !hasCoordinates || _isOpeningMap
-            ? null
-            : () {
-                _openOpenStreetMap(
-                  context: context,
-                  trip: trip,
-                );
-              },
+        onTap: !enabled || _isOpeningMap ? null : () => _openMap(context, t),
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 9,
-            vertical: 8,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
           decoration: BoxDecoration(
-            color: hasCoordinates
-                ? AppColors.primary.withOpacity(0.09)
-                : Colors.grey.withOpacity(0.08),
+            color: enabled ? AppColors.brandSoft : AppColors.surfaceAlt,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               _isOpeningMap
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppColors.primary,
+                        color: AppColors.brand,
                       ),
                     )
-                  : Icon(
-                      Icons.map_outlined,
-                      size: 17,
-                      color: hasCoordinates
-                          ? AppColors.primary
-                          : Colors.grey,
-                    ),
+                  : Icon(Icons.map_outlined, size: 17, color: color),
               const SizedBox(width: 5),
               Flexible(
                 child: Text(
-                  hasCoordinates ? 'مشاهده مسیر' : 'بدون مختصات',
+                  enabled ? 'مشاهده مسیر' : 'بدون مختصات',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: hasCoordinates
-                        ? AppColors.primary
-                        : Colors.grey,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -336,561 +223,234 @@ ${snapshot.error}',
     );
   }
 
-  Future<void> _openOpenStreetMap({
-    required BuildContext context,
-    required _CompletedTrip trip,
-  }) async {
-    if (!trip.hasCoordinates) {
-      _showSnackBar(
-        'مختصات مبدأ یا مقصد این سفر کامل نیست.',
-        Colors.orange,
-      );
+  Future<void> _openMap(BuildContext context, _Trip t) async {
+    if (!t.hasCoordinates) {
+      showAdminSnack(context, 'مختصات مبدأ یا مقصد این سفر کامل نیست.',
+          tone: AdminTone.warning);
       return;
     }
 
-    setState(() {
-      _isOpeningMap = true;
+    setState(() => _isOpeningMap = true);
+
+    final uri = Uri.https('www.openstreetmap.org', '/directions', {
+      'engine': 'fossgis_osrm_car',
+      'route': '${t.pLat},${t.pLng};${t.dLat},${t.dLng}',
     });
 
-    final route = [
-      '${trip.pickupLatitude},${trip.pickupLongitude}',
-      '${trip.dropoffLatitude},${trip.dropoffLongitude}',
-    ].join(';');
-
-    final uri = Uri.https(
-      'www.openstreetmap.org',
-      '/directions',
-      {
-        'engine': 'fossgis_osrm_car',
-        'route': route,
-      },
-    );
-
     try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!launched && mounted) {
-        _showSnackBar(
-          'بازکردن نقشه امکان‌پذیر نیست.',
-          Colors.red,
-        );
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        showAdminSnack(context, 'بازکردن نقشه امکان‌پذیر نیست.',
+            tone: AdminTone.error);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar(
-          'خطا در بازکردن نقشه: $e',
-          Colors.red,
-        );
+        showAdminSnack(context, 'خطا در بازکردن نقشه: $e',
+            tone: AdminTone.error);
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isOpeningMap = false;
-        });
-      }
+      if (mounted) setState(() => _isOpeningMap = false);
     }
   }
 
-  _CompletedTrip _parseTrip(
-    String documentId,
-    Map<String, dynamic> data,
-  ) {
-    final tripId = _readText(
-      data,
-      [
-        'tripID',
-        'tripId',
-        'trip_id',
-      ],
-      fallback: documentId,
-    );
+  // ───────── تجزیهٔ سفر ─────────
+  _Trip _parse(String docId, Map<String, dynamic> d) {
+    final p = _point(d['pickUpLatLng'] ??
+        d['pickupLatLng'] ??
+        d['pickupLocation'] ??
+        d['originLocation']);
+    final o = _point(d['dropOffLatLng'] ??
+        d['dropoffLatLng'] ??
+        d['dropoffLocation'] ??
+        d['destinationLocation']);
 
-    final passengerName = _readText(
-      data,
-      [
-        'passenger_name',
-        'passengerName',
-        'passengername',
-        'userName',
-        'username',
-        'user_name',
-        'name',
-      ],
-      fallback: 'unknown'.tr(),
-    );
-
-    final driverName = _readText(
-      data,
-      [
-        'driver_name',
-        'driverName',
-        'drivername',
-      ],
-      fallback: 'unknown'.tr(),
-    );
-
-    final carDetails = _readCarDetails(data);
-
-    final fare = _readText(
-      data,
-      [
-        'fareAmount',
-        'fare_amount',
-        'fare',
-        'price',
-        'amount',
-      ],
-      fallback: '0',
-    );
-
-    final dateValue = _readValue(
-      data,
-      [
-        'completedAt',
-        'completed_at',
-        'endedAt',
-        'ended_at',
-        'updatedAt',
-        'updated_at',
-        'publishDateTime',
-        'time',
-        'createdAt',
-        'created_at',
-      ],
-    );
-
-    final coordinates = _readCoordinates(data);
-
-    return _CompletedTrip(
-      id: tripId,
-      passengerName: passengerName,
-      driverName: driverName,
-      carDetails: carDetails,
-      fare: fare,
-      dateText: _formatDateTime(dateValue),
-      pickupLatitude: coordinates.pickupLatitude,
-      pickupLongitude: coordinates.pickupLongitude,
-      dropoffLatitude: coordinates.dropoffLatitude,
-      dropoffLongitude: coordinates.dropoffLongitude,
-    );
-  }
-
-  String _readCarDetails(Map<String, dynamic> data) {
-    final directValue = _readText(
-      data,
-      [
-        'carDetails',
-        'car_details',
-        'vehicleDetails',
-        'vehicle_details',
-      ],
-    );
-
-    if (directValue.isNotEmpty) {
-      return directValue;
-    }
-
-    final nested = data['driverDetails'] ?? data['driver_details'];
-
-    if (nested is Map) {
-      final value = _readMapText(
-        nested,
-        [
-          'carModel',
-          'car_model',
-          'model',
-          'vehicle',
+    return _Trip(
+      id: _text(d, const ['tripID', 'tripId', 'trip_id'], fallback: docId),
+      passenger: _text(
+        d,
+        const [
+          'passenger_name',
+          'passengerName',
+          'passengername',
+          'userName',
+          'username',
+          'user_name',
           'name',
         ],
-      );
-
-      if (value.isNotEmpty) {
-        return value;
-      }
-    }
-
-    return 'not_registered'.tr();
-  }
-
-  _TripCoordinates _readCoordinates(
-    Map<String, dynamic> data,
-  ) {
-    double? pickupLatitude = _readDouble(
-      data,
-      [
-        'pickUpLat',
-        'pickupLat',
-        'pickupLatitude',
-        'originLat',
-        'originLatitude',
-      ],
-    );
-
-    double? pickupLongitude = _readDouble(
-      data,
-      [
-        'pickUpLng',
-        'pickupLng',
-        'pickupLongitude',
-        'originLng',
-        'originLongitude',
-      ],
-    );
-
-    double? dropoffLatitude = _readDouble(
-      data,
-      [
-        'dropOffLat',
-        'dropoffLat',
-        'dropoffLatitude',
-        'destinationLat',
-        'destinationLatitude',
-      ],
-    );
-
-    double? dropoffLongitude = _readDouble(
-      data,
-      [
-        'dropOffLng',
-        'dropoffLng',
-        'dropoffLongitude',
-        'destinationLng',
-        'destinationLongitude',
-      ],
-    );
-
-    final pickupValue = data['pickUpLatLng'] ??
-        data['pickupLatLng'] ??
-        data['pickupLocation'] ??
-        data['originLocation'];
-
-    final dropoffValue = data['dropOffLatLng'] ??
-        data['dropoffLatLng'] ??
-        data['dropoffLocation'] ??
-        data['destinationLocation'];
-
-    final pickupPoint = _readPoint(pickupValue);
-    final dropoffPoint = _readPoint(dropoffValue);
-
-    pickupLatitude ??= pickupPoint?.latitude;
-    pickupLongitude ??= pickupPoint?.longitude;
-    dropoffLatitude ??= dropoffPoint?.latitude;
-    dropoffLongitude ??= dropoffPoint?.longitude;
-
-    return _TripCoordinates(
-      pickupLatitude: pickupLatitude,
-      pickupLongitude: pickupLongitude,
-      dropoffLatitude: dropoffLatitude,
-      dropoffLongitude: dropoffLongitude,
+        fallback: 'نامشخص',
+      ),
+      driver: _text(
+        d,
+        const ['driver_name', 'driverName', 'drivername'],
+        fallback: 'نامشخص',
+      ),
+      car: _car(d),
+      fare: _text(
+        d,
+        const ['fareAmount', 'fare_amount', 'fare', 'price', 'amount'],
+        fallback: '0',
+      ),
+      dateText: _formatDate(_value(d, _dateKeys)),
+      pLat: _num(d, const [
+            'pickUpLat',
+            'pickupLat',
+            'pickupLatitude',
+            'originLat',
+            'originLatitude',
+          ]) ??
+          (p == null ? null : p[0]),
+      pLng: _num(d, const [
+            'pickUpLng',
+            'pickupLng',
+            'pickupLongitude',
+            'originLng',
+            'originLongitude',
+          ]) ??
+          (p == null ? null : p[1]),
+      dLat: _num(d, const [
+            'dropOffLat',
+            'dropoffLat',
+            'dropoffLatitude',
+            'destinationLat',
+            'destinationLatitude',
+          ]) ??
+          (o == null ? null : o[0]),
+      dLng: _num(d, const [
+            'dropOffLng',
+            'dropoffLng',
+            'dropoffLongitude',
+            'destinationLng',
+            'destinationLongitude',
+          ]) ??
+          (o == null ? null : o[1]),
     );
   }
 
-  _CoordinatePoint? _readPoint(dynamic value) {
-    if (value is GeoPoint) {
-      return _CoordinatePoint(
-        latitude: value.latitude,
-        longitude: value.longitude,
-      );
-    }
+  String _car(Map<String, dynamic> d) {
+    final direct = _text(d, const [
+      'carDetails',
+      'car_details',
+      'vehicleDetails',
+      'vehicle_details',
+    ]);
+    if (direct.isNotEmpty) return direct;
 
-    if (value is Map) {
-      final latitude = _toDouble(
-        value['latitude'] ?? value['lat'],
-      );
-
-      final longitude = _toDouble(
-        value['longitude'] ?? value['lng'] ?? value['lon'],
-      );
-
-      if (latitude != null && longitude != null) {
-        return _CoordinatePoint(
-          latitude: latitude,
-          longitude: longitude,
-        );
-      }
-    }
-
-    return null;
-  }
-
-  double? _readDouble(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = _toDouble(data[key]);
-
-      if (value != null) {
-        return value;
-      }
-    }
-
-    return null;
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    if (value is String) {
-      return double.tryParse(value.trim());
-    }
-
-    return null;
-  }
-
-  dynamic _readValue(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      if (data[key] != null) {
-        return data[key];
-      }
-    }
-
-    return null;
-  }
-
-  String _formatDateTime(dynamic value) {
-    if (value == null) {
-      return 'no_date'.tr();
-    }
-
-    DateTime? date;
-
-    if (value is Timestamp) {
-      date = value.toDate();
-    } else if (value is DateTime) {
-      date = value;
-    } else if (value is int) {
-      date = DateTime.fromMillisecondsSinceEpoch(value);
-    } else if (value is String) {
-      date = DateTime.tryParse(value);
-    }
-
-    if (date == null) {
-      return value.toString();
-    }
-
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-
-    return '${date.year}/$month/$day $hour:$minute';
-  }
-
-  String _readText(
-    Map<String, dynamic> data,
-    List<String> keys, {
-    String fallback = '',
-  }) {
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value == null) continue;
-
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-
-      if (value is num || value is bool) {
-        return value.toString();
-      }
-
-      if (value is Map) {
-        final nested = _readMapText(
-          value,
-          [
-            'name',
-            'title',
-            'value',
-            'text',
-            'model',
-          ],
-        );
-
-        if (nested.isNotEmpty) {
-          return nested;
+    final nested = d['driverDetails'] ?? d['driver_details'];
+    if (nested is Map) {
+      for (final k in const ['carModel', 'car_model', 'model', 'vehicle', 'name']) {
+        final v = nested[k];
+        if (v != null && v.toString().trim().isNotEmpty) {
+          return v.toString().trim();
         }
       }
     }
-
-    return fallback;
+    return 'ثبت نشده';
   }
 
-  String _readMapText(
-    Map<dynamic, dynamic> data,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value != null && value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
+  List<double>? _point(dynamic v) {
+    if (v is GeoPoint) return [v.latitude, v.longitude];
+    if (v is Map) {
+      final la = _toDouble(v['latitude'] ?? v['lat']);
+      final lo = _toDouble(v['longitude'] ?? v['lng'] ?? v['lon']);
+      if (la != null && lo != null) return [la, lo];
     }
-
-    return '';
-  }
-
-  Timestamp? _readTimestamp(Map<String, dynamic> data) {
-    final value = _readValue(
-      data,
-      [
-        'completedAt',
-        'completed_at',
-        'endedAt',
-        'ended_at',
-        'updatedAt',
-        'updated_at',
-        'publishDateTime',
-        'time',
-        'createdAt',
-        'created_at',
-      ],
-    );
-
-    if (value is Timestamp) {
-      return value;
-    }
-
-    if (value is DateTime) {
-      return Timestamp.fromDate(value);
-    }
-
-    if (value is int) {
-      return Timestamp.fromMillisecondsSinceEpoch(value);
-    }
-
-    if (value is String) {
-      final parsed = DateTime.tryParse(value);
-
-      if (parsed != null) {
-        return Timestamp.fromDate(parsed);
-      }
-    }
-
     return null;
   }
 
-  String _normalizeStatus(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
+  double? _num(Map<String, dynamic> d, List<String> keys) {
+    for (final k in keys) {
+      final v = _toDouble(d[k]);
+      if (v != null) return v;
+    }
+    return null;
   }
 
-  void _showSnackBar(String message, Color color) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+  double? _toDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim());
+    return null;
   }
 
-  Widget _buildStateMessage({
-    required IconData icon,
-    required String message,
-    required Color color,
+  dynamic _value(Map<String, dynamic> d, List<String> keys) {
+    for (final k in keys) {
+      if (d[k] != null) return d[k];
+    }
+    return null;
+  }
+
+  DateTime? _toDate(dynamic v) {
+    if (v is Timestamp) return v.toDate();
+    if (v is DateTime) return v;
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+  Timestamp? _timestamp(Map<String, dynamic> d) {
+    final date = _toDate(_value(d, _dateKeys));
+    return date == null ? null : Timestamp.fromDate(date);
+  }
+
+  String _money(String raw) {
+    final n = AdminFormat.toNumber(raw);
+    return n == null ? AdminFormat.toFa(raw) : AdminFormat.money(n);
+  }
+
+  String _formatDate(dynamic v) {
+    if (v == null) return 'بدون تاریخ';
+    final d = _toDate(v);
+    if (d == null) return v.toString();
+    return AdminFormat.jalaliDateTime(d);
+  }
+
+  String _text(
+    Map<String, dynamic> d,
+    List<String> keys, {
+    String fallback = '',
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(34),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 44, color: color),
-          const SizedBox(height: 13),
-          SelectableText(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
+    for (final k in keys) {
+      final v = d[k];
+      if (v == null) continue;
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+      if (v is num || v is bool) return v.toString();
+      if (v is Map) {
+        for (final n in const ['name', 'title', 'value', 'text', 'model']) {
+          final x = v[n];
+          if (x != null && x.toString().trim().isNotEmpty) {
+            return x.toString().trim();
+          }
+        }
+      }
+    }
+    return fallback;
   }
 }
 
-class _CompletedTrip {
+class _Trip {
   final String id;
-  final String passengerName;
-  final String driverName;
-  final String carDetails;
+  final String passenger;
+  final String driver;
+  final String car;
   final String dateText;
   final String fare;
-  final double? pickupLatitude;
-  final double? pickupLongitude;
-  final double? dropoffLatitude;
-  final double? dropoffLongitude;
+  final double? pLat;
+  final double? pLng;
+  final double? dLat;
+  final double? dLng;
 
-  const _CompletedTrip({
+  const _Trip({
     required this.id,
-    required this.passengerName,
-    required this.driverName,
-    required this.carDetails,
+    required this.passenger,
+    required this.driver,
+    required this.car,
     required this.dateText,
     required this.fare,
-    required this.pickupLatitude,
-    required this.pickupLongitude,
-    required this.dropoffLatitude,
-    required this.dropoffLongitude,
+    required this.pLat,
+    required this.pLng,
+    required this.dLat,
+    required this.dLng,
   });
 
   bool get hasCoordinates =>
-      pickupLatitude != null &&
-      pickupLongitude != null &&
-      dropoffLatitude != null &&
-      dropoffLongitude != null;
-}
-
-class _TripCoordinates {
-  final double? pickupLatitude;
-  final double? pickupLongitude;
-  final double? dropoffLatitude;
-  final double? dropoffLongitude;
-
-  const _TripCoordinates({
-    required this.pickupLatitude,
-    required this.pickupLongitude,
-    required this.dropoffLatitude,
-    required this.dropoffLongitude,
-  });
-}
-
-class _CoordinatePoint {
-  final double latitude;
-  final double longitude;
-
-  const _CoordinatePoint({
-    required this.latitude,
-    required this.longitude,
-  });
+      pLat != null && pLng != null && dLat != null && dLng != null;
 }
