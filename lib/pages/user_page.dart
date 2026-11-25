@@ -1,23 +1,87 @@
-import 'package:easy_localization/easy_localization.dart';
+import 'dart:math' as math;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 import 'package:safir_admin/widgets/users_data_list.dart';
 
 class UserPage extends StatefulWidget {
   static const String id = 'webPageUsers';
 
-  const UserPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const UserPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<UserPage> createState() => _UserPageState();
 }
 
 class _UserPageState extends State<UserPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  String _filter = 'all'; // all | active | blocked
+
+  late Future<_UserStats> _statsFuture = _loadStats();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'users',
+        key: 'view',
+      );
+
+  /// شمارش سمت سرور (count) — به‌جای خواندن همهٔ کاربران.
+  Future<_UserStats> _loadStats() async {
+    final users = FirebaseFirestore.instance.collection('users');
+
+    final total = await users.count().get();
+    final blocked =
+        await users.where('isBlocked', isEqualTo: true).count().get();
+
+    final t = total.count ?? 0;
+    final b = blocked.count ?? 0;
+
+    return _UserStats(total: t, blocked: b);
+  }
+
+  void _refreshStats() {
+    setState(() => _statsFuture = _loadStats());
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'شما اجازهٔ مشاهدهٔ بخش مسافران را ندارید.',
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -28,11 +92,11 @@ class _UserPageState extends State<UserPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(isMobile),
-                  const SizedBox(height: 22),
-                  _buildInfoCards(),
-                  const SizedBox(height: 22),
-                  _buildUsersTable(),
+                  _buildHeader(),
+                  const SizedBox(height: 20),
+                  _buildStats(),
+                  const SizedBox(height: 20),
+                  _buildTable(),
                 ],
               ),
             );
@@ -42,33 +106,19 @@ class _UserPageState extends State<UserPage> {
     );
   }
 
-  Widget _buildHeader(bool isMobile) {
-    final headerContent = Row(
+  Widget _buildHeader() {
+    return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary,
-                AppColors.primary.withOpacity(0.72),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.20),
-                blurRadius: 14,
-                offset: const Offset(0, 7),
-              ),
-            ],
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: const Icon(
             Icons.people_alt_rounded,
             color: Colors.white,
-            size: 28,
+            size: 26,
           ),
         ),
         const SizedBox(width: 14),
@@ -77,143 +127,111 @@ class _UserPageState extends State<UserPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'manage_users'.tr(),
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 23,
+                'مسافران',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               Text(
-                'users_subtitle'.tr(),
+                'فهرست مسافران ثبت‌شده، جستجو و مدیریت وضعیت حساب',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                ),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
             ],
           ),
         ),
-      ],
-    );
-
-    if (isMobile) {
-      return headerContent;
-    }
-
-    return Row(
-      children: [
-        Expanded(child: headerContent),
-        _buildHeaderBadge(),
+        IconButton(
+          tooltip: 'به‌روزرسانی آمار',
+          onPressed: _refreshStats,
+          icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+        ),
       ],
     );
   }
 
-  Widget _buildHeaderBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.verified_user_outlined,
-            color: Colors.green.shade600,
-            size: 21,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'مدیریت کاربران',
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ───────── کارت‌های آمار (با عدد واقعی) ─────────
 
-  Widget _buildInfoCards() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isSmall = constraints.maxWidth < 620;
+  Widget _buildStats() {
+    return FutureBuilder<_UserStats>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        final stats = snapshot.data;
+        final loading = snapshot.connectionState == ConnectionState.waiting;
+        final failed = snapshot.hasError;
+
+        String value(int? n) {
+          if (loading) return '…';
+          if (failed || n == null) return '--';
+          return AdminFormat.toFa(n);
+        }
 
         final cards = [
-          _InfoCardData(
-            title: 'کاربران سیستم',
-            subtitle: 'فهرست کاربران ثبت‌شده',
+          _StatData(
+            title: 'کل مسافران',
+            value: value(stats?.total),
             icon: Icons.groups_rounded,
-            color: const Color(0xFF5B5FEF),
+            color: AppColors.info,
           ),
-          _InfoCardData(
-            title: 'اطلاعات حساب',
-            subtitle: 'ایمیل و شماره تماس',
-            icon: Icons.account_circle_outlined,
-            color: const Color(0xFF159DCE),
+          _StatData(
+            title: 'حساب فعال',
+            value: value(stats?.active),
+            icon: Icons.check_circle_outline_rounded,
+            color: AppColors.ok,
           ),
-          _InfoCardData(
-            title: 'وضعیت کاربران',
-            subtitle: 'بررسی حساب‌های فعال',
-            icon: Icons.fact_check_outlined,
-            color: const Color(0xFF16A36A),
+          _StatData(
+            title: 'مسدود شده',
+            value: value(stats?.blocked),
+            icon: Icons.block_rounded,
+            color: AppColors.danger,
           ),
         ];
 
-        if (isSmall) {
-          return Column(
-            children: [
-              for (int i = 0; i < cards.length; i++)
-                Padding(
-                  padding: EdgeInsets.only(
-                    bottom: i == cards.length - 1 ? 0 : 12,
-                  ),
-                  child: _buildInfoCard(cards[i]),
-                ),
-            ],
-          );
-        }
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 620) {
+              return Column(
+                children: [
+                  for (int i = 0; i < cards.length; i++)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: i == cards.length - 1 ? 0 : 10,
+                      ),
+                      child: _statCard(cards[i]),
+                    ),
+                ],
+              );
+            }
 
-        return Row(
-          children: [
-            for (int i = 0; i < cards.length; i++) ...[
-              Expanded(child: _buildInfoCard(cards[i])),
-              if (i != cards.length - 1) const SizedBox(width: 14),
-            ],
-          ],
+            return Row(
+              children: [
+                for (int i = 0; i < cards.length; i++) ...[
+                  Expanded(child: _statCard(cards[i])),
+                  if (i != cards.length - 1) const SizedBox(width: 12),
+                ],
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildInfoCard(_InfoCardData data) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(17),
-      decoration: _cardDecoration(),
+  Widget _statCard(_StatData d) {
+    return AdminCard(
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
-              color: data.color.withOpacity(0.11),
-              borderRadius: BorderRadius.circular(13),
+              color: AppColors.soft(d.color),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              data.icon,
-              color: data.color,
-              size: 24,
-            ),
+            child: Icon(d.icon, color: d.color, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -221,20 +239,19 @@ class _UserPageState extends State<UserPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  data.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
+                  d.title,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
-                  data.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  d.value,
                   style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 11,
+                    color: AppColors.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -245,137 +262,178 @@ class _UserPageState extends State<UserPage> {
     );
   }
 
-  Widget _buildUsersTable() {
-    return Container(
-      width: double.infinity,
+  // ───────── جدول ─────────
+
+  Widget _buildTable() {
+    return AdminCard(
       padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.09),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const Icon(
-                  Icons.table_rows_rounded,
-                  color: AppColors.primary,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'فهرست کاربران',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
+          _buildControls(),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = math.max(790.0, constraints.maxWidth);
+
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: width,
+                    child: Column(
+                      children: [
+                        _buildTableHeader(),
+                        const SizedBox(height: 8),
+                        UsersDataList(
+                          searchQuery: _query,
+                          filterStatus: _filter,
+                          role: widget.role,
+                          permissions: widget.permissions,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                'برای دیدن همه ستون‌ها صفحه را افقی حرکت دهید',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 790,
-                child: Column(
-                  children: [
-                    _buildTableHeader(),
-                    const SizedBox(height: 10),
-                    const UsersDataList(),
-                  ],
-                ),
-              ),
-            ),
+              );
+            },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildControls() {
+    final search = TextField(
+      controller: _searchController,
+      style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+      onChanged: (v) => setState(() => _query = v.trim()),
+      decoration: InputDecoration(
+        hintText: 'جستجو: نام، ایمیل، شماره تماس یا کد کاربر',
+        prefixIcon: Icon(Icons.search_rounded, color: AppColors.brand),
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'پاک کردن',
+                icon: const Icon(Icons.clear_rounded),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
+              ),
+        isDense: true,
+      ),
+    );
+
+    final chips = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _filterChip('all', 'همه'),
+        _filterChip('active', 'فعال'),
+        _filterChip('blocked', 'مسدود'),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 700) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [search, const SizedBox(height: 10), chips],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: search),
+            const SizedBox(width: 14),
+            chips,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _filterChip(String value, String label) {
+    final selected = _filter == value;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => setState(() => _filter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.brandSoft : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.brand : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.brand : AppColors.textSecondary,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildTableHeader() {
+    Widget cell(String title) => Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+
     return Container(
-      height: 54,
+      height: 46,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.82),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          _headerCell('نام کاربر', 1),
-          _headerCell('ایمیل', 1),
-          _headerCell('شماره تماس', 1),
-          _headerCell('وضعیت حساب', 1),
+          cell('نام مسافر'),
+          cell('ایمیل'),
+          cell('شماره تماس'),
+          cell('وضعیت حساب'),
         ],
       ),
     );
   }
-
-  Widget _headerCell(String title, int flex) {
-    return Expanded(
-      flex: flex,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.grey.shade100),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    );
-  }
 }
 
-class _InfoCardData {
+class _UserStats {
+  final int total;
+  final int blocked;
+
+  const _UserStats({required this.total, required this.blocked});
+
+  int get active => total - blocked < 0 ? 0 : total - blocked;
+}
+
+class _StatData {
   final String title;
-  final String subtitle;
+  final String value;
   final IconData icon;
   final Color color;
 
-  const _InfoCardData({
+  const _StatData({
     required this.title,
-    required this.subtitle,
+    required this.value,
     required this.icon,
     required this.color,
   });
