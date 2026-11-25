@@ -295,10 +295,10 @@ class _LoginPageState extends State<LoginPage> {
                     strokeWidth: 2.5,
                   ),
                 )
-              : const Row(
-                  key: ValueKey('login'),
+              : Row(
+                  key: const ValueKey('login'),
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                  children: const [
                     Icon(Icons.login_rounded, size: 21),
                     SizedBox(width: 10),
                     Text(
