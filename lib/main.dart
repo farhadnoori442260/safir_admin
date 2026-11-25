@@ -13,6 +13,7 @@ import 'package:safir_admin/firebase_options.dart';
 import 'package:safir_admin/pages/login_page.dart';
 import 'package:safir_admin/provider/driver_provider.dart';
 import 'package:safir_admin/provider/user_provider.dart';
+import 'package:safir_admin/theme/admin_theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,8 +39,166 @@ Future<void> main() async {
   );
 }
 
-class SafirAdminApp extends StatelessWidget {
+class SafirAdminApp extends StatefulWidget {
   const SafirAdminApp({super.key});
+
+  @override
+  State<SafirAdminApp> createState() => _SafirAdminAppState();
+}
+
+class _SafirAdminAppState extends State<SafirAdminApp>
+    with WidgetsBindingObserver {
+  final _theme = AdminThemeController.instance;
+  bool _appliedDark = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _theme.addListener(_onThemeChanged);
+    _theme.applyToColors();
+    _appliedDark = AppColors.isDark;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _theme.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() => _onThemeChanged();
+
+  void _onThemeChanged() {
+    final dark = _theme.resolveDark();
+    if (dark == _appliedDark) return;
+
+    // رنگ‌ها از AppColors خوانده می‌شوند؛ پس کل درخت باید دوباره ساخته شود.
+    _appliedDark = dark;
+    AppColors.isDark = dark;
+    setState(() {});
+    _markAllDirty();
+  }
+
+  void _markAllDirty() {
+    void visit(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(visit);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildren(visit);
+  }
+
+  ThemeData _buildTheme() {
+    final dark = AppColors.isDark;
+
+    return ThemeData(
+      useMaterial3: true,
+      fontFamily: 'IranYekan',
+      brightness: dark ? Brightness.dark : Brightness.light,
+      scaffoldBackgroundColor: AppColors.bg,
+      canvasColor: AppColors.surface,
+      dividerColor: AppColors.border,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        primary: AppColors.brand,
+        surface: AppColors.surface,
+        brightness: dark ? Brightness.dark : Brightness.light,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
+        centerTitle: true,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: TextStyle(
+          color: AppColors.textPrimary,
+          fontFamily: 'IranYekan',
+          fontSize: 17,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.surface,
+        hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.brand, width: 1.3),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.accentButton,
+          foregroundColor: AppColors.buttonText,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          textStyle: const TextStyle(
+            fontFamily: 'IranYekan',
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: AppColors.surface,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: AppColors.border),
+        ),
+      ),
+      textTheme: TextTheme(
+        bodyLarge: TextStyle(
+          fontFamily: 'IranYekan',
+          color: AppColors.textPrimary,
+        ),
+        bodyMedium: TextStyle(
+          fontFamily: 'IranYekan',
+          color: AppColors.textPrimary,
+        ),
+        bodySmall: TextStyle(
+          fontFamily: 'IranYekan',
+          color: AppColors.textSecondary,
+        ),
+        titleMedium: TextStyle(
+          fontFamily: 'IranYekan',
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,126 +214,21 @@ class SafirAdminApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Safir Admin Panel',
-
         localizationsDelegates: context.localizationDelegates,
         supportedLocales: context.supportedLocales,
         locale: context.locale,
-
         builder: (context, child) {
-          final localeCode = context.locale.languageCode;
-
-          final direction =
-              localeCode == 'fa' || localeCode == 'ps'
-                  ? ui.TextDirection.rtl
-                  : ui.TextDirection.ltr;
+          final code = context.locale.languageCode;
+          final direction = code == 'fa' || code == 'ps'
+              ? ui.TextDirection.rtl
+              : ui.TextDirection.ltr;
 
           return Directionality(
             textDirection: direction,
             child: child ?? const SizedBox.shrink(),
           );
         },
-
-        theme: ThemeData(
-          useMaterial3: true,
-          fontFamily: 'IranYekan',
-          scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: AppColors.primary,
-            primary: AppColors.primary,
-            brightness: Brightness.light,
-          ),
-
-          appBarTheme: const AppBarTheme(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            centerTitle: true,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-            titleTextStyle: TextStyle(
-              color: Colors.white,
-              fontFamily: 'IranYekan',
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          snackBarTheme: SnackBarThemeData(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.grey.shade200,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.grey.shade200,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.primary,
-                width: 1.3,
-              ),
-            ),
-          ),
-
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 13,
-              ),
-              textStyle: const TextStyle(
-                fontFamily: 'IranYekan',
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-
-          cardTheme: CardThemeData(
-            color: Colors.white,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-
-          textTheme: const TextTheme(
-            bodyMedium: TextStyle(
-              fontFamily: 'IranYekan',
-              color: Colors.black87,
-            ),
-            bodySmall: TextStyle(
-              fontFamily: 'IranYekan',
-              color: Colors.black54,
-            ),
-          ),
-        ),
-
+        theme: _buildTheme(),
         home: const AuthGate(),
       ),
     );
@@ -194,13 +248,12 @@ class AuthGate extends StatelessWidget {
             icon: Icons.error_outline_rounded,
             title: 'خطا در بررسی وضعیت ورود',
             message: authSnapshot.error.toString(),
-            color: Colors.red,
+            color: AppColors.danger,
             showSignOutButton: true,
           );
         }
 
-        if (authSnapshot.connectionState ==
-            ConnectionState.waiting) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const _LoadingPage();
         }
 
@@ -210,23 +263,20 @@ class AuthGate extends StatelessWidget {
           return const LoginPage();
         }
 
-        return FutureBuilder<
-            DocumentSnapshot<Map<String, dynamic>>>(
+        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           future: FirebaseFirestore.instance
               .collection('admins')
               .doc(user.uid)
               .get(),
           builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState ==
-                ConnectionState.waiting) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
               return const _LoadingPage();
             }
 
             if (userSnapshot.hasError) {
               return _AccessDeniedPage(
                 message:
-                    'خطا در دریافت اطلاعات دسترسی: '
-                    '${userSnapshot.error}',
+                    'خطا در دریافت اطلاعات دسترسی: ${userSnapshot.error}',
               );
             }
 
@@ -234,8 +284,7 @@ class AuthGate extends StatelessWidget {
 
             if (document == null || !document.exists) {
               return const _AccessDeniedPage(
-                message:
-                    'برای این حساب، پروفایل مدیریتی پیدا نشد.',
+                message: 'برای این حساب، پروفایل مدیریتی پیدا نشد.',
               );
             }
 
@@ -243,17 +292,13 @@ class AuthGate extends StatelessWidget {
 
             if (userData == null) {
               return const _AccessDeniedPage(
-                message:
-                    'اطلاعات پروفایل این حساب خالی است.',
+                message: 'اطلاعات پروفایل این حساب خالی است.',
               );
             }
 
             final isActive = userData['active'] == true;
-
             final role = userData['role']?.toString().trim() ?? '';
-
-            final rawAllowedSections =
-                userData['allowedSections'];
+            final rawAllowedSections = userData['allowedSections'];
 
             final List<String> allowedSections;
 
@@ -269,15 +314,11 @@ class AuthGate extends StatelessWidget {
               allowedSections = <String>[];
             }
 
-            final rawPermissions =
-                userData['permissions'];
+            final rawPermissions = userData['permissions'];
 
-            final permissions =
-                rawPermissions is Map
-                    ? Map<String, dynamic>.from(
-                        rawPermissions,
-                      )
-                    : <String, dynamic>{};
+            final permissions = rawPermissions is Map
+                ? Map<String, dynamic>.from(rawPermissions)
+                : <String, dynamic>{};
 
             if (!isActive) {
               return const _AccessDeniedPage(
@@ -287,8 +328,7 @@ class AuthGate extends StatelessWidget {
 
             if (role.isEmpty) {
               return const _AccessDeniedPage(
-                message:
-                    'نقش این حساب در Firestore تعیین نشده است.',
+                message: 'نقش این حساب در Firestore تعیین نشده است.',
               );
             }
 
@@ -303,8 +343,7 @@ class AuthGate extends StatelessWidget {
 
             if (allowedSections.isEmpty) {
               return const _AccessDeniedPage(
-                message:
-                    'برای این حساب هیچ بخشی تعیین نشده است.',
+                message: 'برای این حساب هیچ بخشی تعیین نشده است.',
               );
             }
 
@@ -338,12 +377,11 @@ class RoleBasedSectionPage extends StatelessWidget {
     final selectedSection = allowedSections.first;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: Text(
-          _sectionTitle(selectedSection),
-        ),
+        title: Text(_sectionTitle(selectedSection)),
         actions: [
+          const AdminThemeToggleButton(),
           IconButton(
             tooltip: 'خروج',
             onPressed: () async {
@@ -397,9 +435,6 @@ class _SectionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = _title(section);
-    final icon = _icon(section);
-
     return Center(
       child: Container(
         width: double.infinity,
@@ -407,51 +442,32 @@ class _SectionContent extends StatelessWidget {
         margin: const EdgeInsets.all(24),
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 64,
-              color: AppColors.primary,
-            ),
+            Icon(_icon(section), size: 60, color: AppColors.brand),
             const SizedBox(height: 18),
             Text(
-              title,
+              _title(section),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 22,
+              style: TextStyle(
+                fontSize: 21,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 12),
             Text(
               'این بخش برای نقش "$role" باز شده است.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.black54,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'کنترل دسترسی با موفقیت کار می‌کند.',
-              textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.6,
               ),
             ),
           ],
@@ -509,18 +525,44 @@ class _SectionContent extends StatelessWidget {
         return Icons.dashboard_rounded;
     }
   }
-} // <--- این آکولاد بسته که گم شده بود اضافه شد تا بقیه کلاس‌ها بیرون از این کلاس قرار گیرند.
+}
 
 class _LoadingPage extends StatelessWidget {
   const _LoadingPage();
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFF5F7FB),
+    return Scaffold(
+      backgroundColor: AppColors.bg,
       body: Center(
-        child: CircularProgressIndicator(
-          color: AppColors.primary,
+        child: CircularProgressIndicator(color: AppColors.brand),
+      ),
+    );
+  }
+}
+
+class _StateCard extends StatelessWidget {
+  final double maxWidth;
+  final Widget child;
+
+  const _StateCard({required this.maxWidth, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Center(
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: child,
         ),
       ),
     );
@@ -544,69 +586,43 @@ class _AuthStatePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: Center(
-        child: Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxWidth: 460),
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.grey.shade100,
+    return _StateCard(
+      maxWidth: 460,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 48, color: color),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 48,
-                color: color,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 9),
-              SelectableText(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                  height: 1.5,
-                ),
-              ),
-              if (showSignOutButton) ...[
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
-                  },
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text('بازگشت به صفحه ورود'),
-                ),
-              ],
-            ],
+          const SizedBox(height: 9),
+          SelectableText(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.6,
+            ),
           ),
-        ),
+          if (showSignOutButton) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('بازگشت به صفحه ورود'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -615,68 +631,43 @@ class _AuthStatePage extends StatelessWidget {
 class _AccessDeniedPage extends StatelessWidget {
   final String message;
 
-  const _AccessDeniedPage({
-    required this.message,
-  });
+  const _AccessDeniedPage({required this.message});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: Center(
-        child: Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxWidth: 460),
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
+    return _StateCard(
+      maxWidth: 460,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_outline_rounded, size: 52, color: AppColors.danger),
+          const SizedBox(height: 16),
+          Text(
+            'دسترسی رد شد',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.lock_outline_rounded,
-                size: 52,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'دسترسی رد شد',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.black54,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 22),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('بازگشت به ورود'),
-              ),
-            ],
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              height: 1.6,
+            ),
           ),
-        ),
+          const SizedBox(height: 22),
+          ElevatedButton.icon(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('بازگشت به ورود'),
+          ),
+        ],
       ),
     );
   }
