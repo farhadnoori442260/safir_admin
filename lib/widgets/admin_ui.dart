@@ -239,7 +239,7 @@ Future<bool?> showAdminConfirm({
   required String title,
   required String message,
   required String confirmText,
-  required Color color,
+  Color? color,
 }) {
   return showDialog<bool>(
     context: context,
@@ -272,7 +272,7 @@ Future<bool?> showAdminConfirm({
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: color,
+            backgroundColor: color ?? AppColors.accentButton,
             foregroundColor: Colors.white,
             elevation: 0,
           ),
