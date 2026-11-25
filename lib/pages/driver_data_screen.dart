@@ -1,15 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class DriverDataScreen extends StatefulWidget {
   final String driverId;
+  final String role;
+  final Map<String, dynamic> permissions;
 
   const DriverDataScreen({
     super.key,
     required this.driverId,
+    this.role = 'superAdmin',
+    this.permissions = const {},
   });
 
   @override
@@ -18,6 +23,21 @@ class DriverDataScreen extends StatefulWidget {
 
 class _DriverDataScreenState extends State<DriverDataScreen> {
   late final DocumentReference<Map<String, dynamic>> _driverReference;
+
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'drivers',
+        key: 'view',
+      );
+
+  bool get _canDocs => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'drivers',
+        key: 'viewDocuments',
+        alternatives: const ['documents', 'view_documents'],
+      );
 
   @override
   void initState() {
@@ -30,6 +50,16 @@ class _DriverDataScreenState extends State<DriverDataScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return _buildScaffold(
+        body: _buildStateMessage(
+          icon: Icons.lock_outline_rounded,
+          message: 'شما اجازهٔ مشاهدهٔ اطلاعات رانندگان را ندارید.',
+          color: AppColors.textMuted,
+        ),
+      );
+    }
+
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _driverReference.snapshots(),
       builder: (context, snapshot) {
@@ -37,20 +67,15 @@ class _DriverDataScreenState extends State<DriverDataScreen> {
           return _buildScaffold(
             body: _buildStateMessage(
               icon: Icons.error_outline_rounded,
-              message: 'خطا در دریافت اطلاعات راننده:
-${snapshot.error}',
-              color: Colors.red.shade600,
+              message: 'خطا در دریافت اطلاعات راننده:\n${snapshot.error}',
+              color: AppColors.danger,
             ),
           );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildScaffold(
-            body: const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
+            body: const AdminLoading(),
           );
         }
 
@@ -64,7 +89,7 @@ ${snapshot.error}',
                 'no_data_found',
                 fallback: 'اطلاعاتی برای این راننده یافت نشد',
               ),
-              color: Colors.grey.shade500,
+              color: AppColors.textMuted,
             ),
           );
         }
@@ -135,11 +160,12 @@ ${snapshot.error}',
     required Widget body,
   }) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.accentButton,
+        foregroundColor: AppColors.buttonText,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: true,
         title: Text(
           _safeTranslation(
@@ -164,12 +190,12 @@ ${snapshot.error}',
         Container(
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.10),
+            color: AppColors.brandSoft,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.person_search_rounded,
-            color: AppColors.primary,
+            color: AppColors.brand,
             size: 26,
           ),
         ),
@@ -180,10 +206,10 @@ ${snapshot.error}',
             children: [
               Text(
                 'مشخصات راننده',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: AppColors.brand,
                 ),
               ),
               const SizedBox(height: 4),
@@ -192,7 +218,7 @@ ${snapshot.error}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  color: AppColors.textSecondary,
                   fontSize: 13,
                 ),
               ),
@@ -207,18 +233,18 @@ ${snapshot.error}',
               vertical: 7,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               widget.driverId.length > 8
                   ? widget.driverId.substring(0, 8)
                   : widget.driverId,
-              style: const TextStyle(
-                color: AppColors.primary,
+              style: TextStyle(
+                color: AppColors.brand,
                 fontWeight: FontWeight.bold,
-                fontSize: 11,
+                fontSize: 12,
               ),
             ),
           ),
@@ -320,9 +346,9 @@ ${snapshot.error}',
             name,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
-              color: AppColors.primary,
+              color: AppColors.brand,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -330,7 +356,7 @@ ${snapshot.error}',
           Text(
             'اطلاعات شخصی و راه‌های ارتباطی راننده',
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: AppColors.textSecondary,
               fontSize: 12,
             ),
           ),
@@ -403,10 +429,10 @@ ${snapshot.error}',
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: AppColors.primary,
+          color: AppColors.brand,
           width: 3,
         ),
-        color: AppColors.primary.withOpacity(0.08),
+        color: AppColors.brandSoft,
       ),
       child: ClipOval(
         child: hasImage
@@ -416,24 +442,24 @@ ${snapshot.error}',
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
 
-                  return const Center(
+                  return Center(
                     child: CircularProgressIndicator(
-                      color: AppColors.primary,
+                      color: AppColors.brand,
                     ),
                   );
                 },
                 errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
+                  return Icon(
                     Icons.person_outline_rounded,
                     size: 58,
-                    color: AppColors.primary,
+                    color: AppColors.brand,
                   );
                 },
               )
-            : const Icon(
+            : Icon(
                 Icons.person_outline_rounded,
                 size: 58,
-                color: AppColors.primary,
+                color: AppColors.brand,
               ),
       ),
     );
@@ -448,8 +474,8 @@ ${snapshot.error}',
         : (isApproved ? 'تأیید شده' : 'در انتظار تأیید');
 
     final statusColor = isBlocked
-        ? Colors.red
-        : (isApproved ? Colors.green : Colors.orange.shade800);
+        ? AppColors.danger
+        : (isApproved ? AppColors.ok : AppColors.warning);
 
     final statusIcon = isBlocked
         ? Icons.block_rounded
@@ -495,7 +521,7 @@ ${snapshot.error}',
                           ? 'مدارک این راننده توسط مدیریت تأیید شده است.'
                           : 'مدارک راننده هنوز نیاز به بررسی و تأیید دارند.'),
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: AppColors.textSecondary,
                     fontSize: 12,
                   ),
                 ),
@@ -516,7 +542,7 @@ ${snapshot.error}',
               statusLabel,
               style: TextStyle(
                 color: statusColor,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -665,7 +691,7 @@ ${snapshot.error}',
         ),
         style: TextStyle(
           fontStyle: FontStyle.italic,
-          color: Colors.grey.shade600,
+          color: AppColors.textSecondary,
           fontSize: 13,
         ),
       );
@@ -860,7 +886,7 @@ ${snapshot.error}',
           Icon(
             icon,
             size: 18,
-            color: AppColors.primary,
+            color: AppColors.brand,
           ),
           const SizedBox(width: 7),
           Expanded(
@@ -877,14 +903,14 @@ ${snapshot.error}',
                   TextSpan(
                     text: '$label: ',
                     style: TextStyle(
-                      color: Colors.grey.shade600,
+                      color: AppColors.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   TextSpan(
                     text: value,
-                    style: const TextStyle(
-                      color: Colors.black87,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -898,6 +924,13 @@ ${snapshot.error}',
   }
 
   Widget _buildDocumentsGrid(List<_DocumentItem> documents) {
+    if (!_canDocs) {
+      return Text(
+        'شما اجازهٔ مشاهدهٔ تصویر مدارک را ندارید.',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -944,10 +977,10 @@ ${snapshot.error}',
           : null,
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: AppColors.surfaceAlt,
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: AppColors.primary.withOpacity(0.11),
+            color: AppColors.border,
           ),
         ),
         child: Column(
@@ -965,9 +998,9 @@ ${snapshot.error}',
                         loadingBuilder: (context, child, progress) {
                           if (progress == null) return child;
 
-                          return const Center(
+                          return Center(
                             child: CircularProgressIndicator(
-                              color: AppColors.primary,
+                              color: AppColors.brand,
                             ),
                           );
                         },
@@ -993,7 +1026,7 @@ ${snapshot.error}',
                 children: [
                   Icon(
                     document.icon,
-                    color: AppColors.primary,
+                    color: AppColors.brand,
                     size: 18,
                   ),
                   const SizedBox(width: 7),
@@ -1002,18 +1035,18 @@ ${snapshot.error}',
                       document.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 11,
+                      style: TextStyle(
+                        color: AppColors.brand,
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   if (hasUrl)
-                    const Icon(
+                    Icon(
                       Icons.zoom_in_rounded,
                       size: 18,
-                      color: AppColors.primary,
+                      color: AppColors.brand,
                     ),
                 ],
               ),
@@ -1030,7 +1063,7 @@ ${snapshot.error}',
   }) {
     return Container(
       width: double.infinity,
-      color: Colors.grey.shade100,
+      color: AppColors.border,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1038,15 +1071,15 @@ ${snapshot.error}',
             Icon(
               icon,
               size: 38,
-              color: Colors.grey.shade500,
+              color: AppColors.textMuted,
             ),
             const SizedBox(height: 7),
             Text(
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontSize: 12,
               ),
             ),
           ],
@@ -1073,7 +1106,7 @@ ${snapshot.error}',
                   maxHeight: 720,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(
@@ -1113,8 +1146,8 @@ ${snapshot.error}',
                             loadingBuilder: (context, child, progress) {
                               if (progress == null) return child;
 
-                              return const CircularProgressIndicator(
-                                color: AppColors.primary,
+                              return CircularProgressIndicator(
+                                color: AppColors.brand,
                               );
                             },
                             errorBuilder: (context, error, stackTrace) {
@@ -1154,12 +1187,12 @@ ${snapshot.error}',
               Container(
                 padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.09),
+                  color: AppColors.brandSoft,
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Icon(
                   icon,
-                  color: AppColors.primary,
+                  color: AppColors.brand,
                   size: 21,
                 ),
               ),
@@ -1167,8 +1200,8 @@ ${snapshot.error}',
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: AppColors.primary,
+                  style: TextStyle(
+                    color: AppColors.brand,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1179,7 +1212,7 @@ ${snapshot.error}',
           const SizedBox(height: 17),
           Divider(
             height: 1,
-            color: Colors.grey.shade200,
+            color: AppColors.border,
           ),
           const SizedBox(height: 17),
           child,
@@ -1190,18 +1223,9 @@ ${snapshot.error}',
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: Colors.grey.shade100,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 
@@ -1417,9 +1441,8 @@ ${snapshot.error}',
     String key, {
     required String fallback,
   }) {
-    final translated = key.tr();
-
-    return translated == key ? fallback : translated;
+    // پنل فقط فارسی است؛ کلید ترجمه استفاده نمی‌شود
+    return fallback;
   }
 
   Widget _buildStateMessage({
@@ -1446,7 +1469,7 @@ ${snapshot.error}',
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.grey.shade700,
+                color: AppColors.textSecondary,
                 fontSize: 13,
                 height: 1.5,
               ),
