@@ -4,9 +4,18 @@ import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
 import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class PricingSettingsPage extends StatefulWidget {
-  const PricingSettingsPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const PricingSettingsPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<PricingSettingsPage> createState() => _PricingSettingsPageState();
@@ -48,6 +57,20 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
   bool _intercityPerPassenger = false;
   bool _isSaving = false;
   bool _loadedOnce = false;
+
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'fare',
+        key: 'view',
+      );
+
+  bool get _canEdit => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'fare',
+        key: 'update',
+      );
 
   DocumentReference<Map<String, dynamic>> get _settingsRef =>
       FirebaseFirestore.instance.collection('settings').doc('app_config');
@@ -123,7 +146,19 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
   }
 
   Future<void> _saveSettings() async {
+    if (!_canEdit) return;
     if (!_formKey.currentState!.validate()) return;
+
+    final bool ok = await showAdminConfirm(
+          context: context,
+          title: 'ذخیرهٔ تنظیمات کرایه',
+          message: 'تغییرات بلافاصله روی اپ مسافر و راننده اعمال می‌شود. '
+              'مطمئن هستید؟',
+          confirmText: 'ذخیره',
+        ) ??
+        false;
+
+    if (!ok || !mounted) return;
 
     setState(() {
       _isSaving = true;
@@ -163,22 +198,24 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
         SetOptions(merge: true),
       );
 
+      await AdminLog.write(
+        action: 'pricing_updated',
+        targetType: 'settings',
+        targetId: 'app_config',
+        details: 'commission=${_storable(commission)}%, '
+            'taxi=${_taxiBaseFareController.text}+${_taxiPerKmController.text}/km',
+      );
+
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تنظیمات با موفقیت ذخیره شد'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      showAdminSnack(context, 'تنظیمات با موفقیت ذخیره شد');
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در ذخیره تنظیمات: $e'),
-          backgroundColor: Colors.red,
-        ),
+      showAdminSnack(
+        context,
+        'خطا در ذخیره تنظیمات: $e',
+        tone: AdminTone.error,
       );
     } finally {
       if (mounted) {
@@ -228,10 +265,18 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
         hintText: hint,
         suffixText: suffix,
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: AppColors.surfaceAlt,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.brand, width: 1.5),
         ),
       ),
     );
@@ -243,21 +288,41 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'شما اجازهٔ مشاهدهٔ تنظیمات کرایه را ندارید.',
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: _settingsRef.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
-              child: SelectableText('خطا در دریافت تنظیمات: ${snapshot.error}'),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: AdminStateMessage(
+                  icon: Icons.error_outline_rounded,
+                  color: AppColors.danger,
+                  message: 'خطا در دریافت تنظیمات: ${snapshot.error}',
+                ),
+              ),
             );
           }
 
           if (!snapshot.hasData) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
+            return const AdminLoading();
           }
 
           if (!_loadedOnce) {
@@ -269,13 +334,15 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
             padding: const EdgeInsets.all(28),
             child: Form(
               key: _formKey,
-              child: Column(
+              child: AbsorbPointer(
+                absorbing: !_canEdit,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'تنظیمات کرایه و کمیسیون',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.textPrimary,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
@@ -284,9 +351,29 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                   Text(
                     'قیمت‌ها و درصد کمیسیون اپ سفیر را از اینجا تغییر بده. '
                     'بعد از ذخیره، اپ مسافر و راننده همان لحظه به‌روز می‌شوند.',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  if (!_canEdit) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.soft(AppColors.warning),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'شما فقط اجازهٔ مشاهده دارید و نمی‌توانید تنظیمات را تغییر دهید.',
+                        style: TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  const SizedBox(height: 8),
 
                   _section(
                     title: 'کمیسیون و وضعیت سرویس',
@@ -307,7 +394,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                           'در صورت خاموش‌کردن، درخواست سفر جدید غیرفعال می‌شود',
                         ),
                         value: _isServiceActive,
-                        activeColor: AppColors.primary,
+                        activeColor: AppColors.brand,
                         onChanged: (bool value) {
                           setState(() {
                             _isServiceActive = value;
@@ -387,7 +474,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                       const SizedBox(height: 14),
                       Text(
                         'قیمت هر خودرو = کرایه هر کیلومتر × ضریب خودرو × کیلومتر',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                       ),
                       const SizedBox(height: 10),
                       _buildNumberField(
@@ -440,7 +527,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                           'اگر خاموش باشد، کرایه برای کل ماشین است',
                         ),
                         value: _intercityPerPassenger,
-                        activeColor: AppColors.primary,
+                        activeColor: AppColors.brand,
                         onChanged: (bool value) {
                           setState(() {
                             _intercityPerPassenger = value;
@@ -480,7 +567,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: _isSaving ? null : _saveSettings,
+                      onPressed: (_isSaving || !_canEdit) ? null : _saveSettings,
                       icon: _isSaving
                           ? const SizedBox(
                               width: 20,
@@ -493,8 +580,8 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                           : const Icon(Icons.save_rounded),
                       label: Text(_isSaving ? 'در حال ذخیره...' : 'ذخیره تنظیمات'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.accentButton,
+                        foregroundColor: AppColors.buttonText,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -502,6 +589,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
                     ),
                   ),
                 ],
+              ),
               ),
             ),
           );
@@ -562,21 +650,21 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.06),
+            color: AppColors.brandSoft,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.primary.withOpacity(0.18)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.calculate_rounded, color: AppColors.primary),
+                  Icon(Icons.calculate_rounded, color: AppColors.brand),
                   SizedBox(width: 8),
                   Text(
                     'پیش‌نمایش قیمت یک سفر ۱۰ کیلومتری',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.brand,
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                     ),
@@ -607,7 +695,7 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
               Text(
                 'کمیسیون یک سفر تاکسی ۱۰ کیلومتری: '
                 '${AdminFormat.money(commission)} افغانی',
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
               ),
             ],
           ),
@@ -640,15 +728,9 @@ class _PricingSettingsPageState extends State<PricingSettingsPage> {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.04),
-          blurRadius: 16,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 }
