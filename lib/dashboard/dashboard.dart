@@ -1,8 +1,48 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
+
+const List<String> _activeStatuses = [
+  'searching',
+  'accepted',
+  'arrived',
+  'ontrip',
+];
+const List<String> _completedStatuses = ['completed', 'ended'];
+const List<String> _cancelledStatuses = [
+  'cancelled_by_passenger',
+  'cancelled_by_driver',
+  'cancelled',
+];
+
+/// آمار داشبورد؛ هر مقدار null یعنی خواندنش ناموفق بود (نمایش «--»).
+class _Stats {
+  final int? drivers;
+  final int? approvedDrivers;
+  final int? users;
+  final int? activeTrips;
+  final int? completedToday;
+  final int? cancelledToday;
+
+  const _Stats({
+    this.drivers,
+    this.approvedDrivers,
+    this.users,
+    this.activeTrips,
+    this.completedToday,
+    this.cancelledToday,
+  });
+
+  int? get pendingDrivers {
+    if (drivers == null || approvedDrivers == null) return null;
+    final v = drivers! - approvedDrivers!;
+    return v < 0 ? 0 : v;
+  }
+}
 
 class Dashboard extends StatefulWidget {
   final String role;
@@ -19,48 +59,102 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _driversStream;
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _usersStream;
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _ridesStream;
+  late Future<_Stats> _statsFuture;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _recentStream;
+
+  bool _can(String section) => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: section,
+        key: 'view',
+      );
+
+  bool get _canDrivers => _can('drivers');
+  bool get _canUsers => _can('users');
+  bool get _canTrips => _can('trips');
 
   @override
   void initState() {
     super.initState();
-    _createStreams();
+    _reload();
   }
 
-  void _createStreams() {
-  final role = widget.role;
+  void _reload() {
+    _statsFuture = _loadStats();
 
-  _driversStream = null;
-  _usersStream = null;
-  _ridesStream = null;
-
-  if (role == 'superAdmin' || role == 'drivers') {
-    _driversStream = _firestore.collection('drivers').snapshots();
+    // فقط ۸ سفر آخر (به‌جای کل کالکشن)
+    _recentStream = _canTrips
+        ? _db
+            .collection('rides')
+            .orderBy('createdAt', descending: true)
+            .limit(8)
+            .snapshots()
+        : null;
   }
 
-  if (role == 'superAdmin' || role == 'passengers') {
-    _usersStream = _firestore.collection('users').snapshots();
+  void _refresh() => setState(_reload);
+
+  // ───────── شمارش‌ها (سمت سرور با count) ─────────
+
+  Future<int?> _count(Query<Map<String, dynamic>> query) async {
+    try {
+      final snap = await query.count().get();
+      return snap.count;
+    } catch (_) {
+      return null;
+    }
   }
 
-  if (role == 'superAdmin' || role == 'operations') {
-    _ridesStream = _firestore.collection('rides').snapshots();
-  }
+  Future<_Stats> _loadStats() async {
+    final now = DateTime.now();
+    final todayStart = Timestamp.fromDate(DateTime(now.year, now.month, now.day));
+
+    final drivers = _db.collection('drivers');
+    final rides = _db.collection('rides');
+
+    final results = await Future.wait<int?>([
+      _canDrivers ? _count(drivers) : Future.value(null),
+      _canDrivers
+          ? _count(drivers.where('isApproved', isEqualTo: true))
+          : Future.value(null),
+      _canUsers ? _count(_db.collection('users')) : Future.value(null),
+      _canTrips
+          ? _count(rides.where('status', whereIn: _activeStatuses))
+          : Future.value(null),
+      _canTrips
+          ? _count(
+              rides
+                  .where('status', whereIn: _completedStatuses)
+                  .where('createdAt', isGreaterThanOrEqualTo: todayStart),
+            )
+          : Future.value(null),
+      _canTrips
+          ? _count(
+              rides
+                  .where('status', whereIn: _cancelledStatuses)
+                  .where('createdAt', isGreaterThanOrEqualTo: todayStart),
+            )
+          : Future.value(null),
+    ]);
+
+    return _Stats(
+      drivers: results[0],
+      approvedDrivers: results[1],
+      users: results[2],
+      activeTrips: results[3],
+      completedToday: results[4],
+      cancelledToday: results[5],
+    );
   }
 
-  void _refreshDashboard() {
-    setState(() {
-      _createStreams();
-    });
-  }
+  // ───────── رابط کاربری ─────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isMobile = constraints.maxWidth < 700;
@@ -70,9 +164,12 @@ class _DashboardState extends State<Dashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeader(isMobile),
-                const SizedBox(height: 24),
-                _buildDashboardData(isMobile),
+                _buildHeader(),
+                const SizedBox(height: 22),
+                if (!_canDrivers && !_canUsers && !_canTrips)
+                  _buildRoleMessage()
+                else
+                  _buildBody(isMobile),
               ],
             ),
           );
@@ -81,388 +178,191 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _buildHeader(bool isMobile) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 18 : 24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.78),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.22),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeaderText(),
-                const SizedBox(height: 18),
-                _buildRefreshButton(),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: _buildHeaderText()),
-                _buildRefreshButton(),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildHeaderText() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHeader() {
+    return Row(
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.dashboard_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'welcome_title'.tr(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'welcome_subtitle'.tr(),
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.82),
-            fontSize: 13,
-            height: 1.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRefreshButton() {
-    return ElevatedButton.icon(
-      onPressed: _refreshDashboard,
-      icon: const Icon(Icons.refresh_rounded, size: 19),
-      label: Text('refresh'.tr()),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.primary,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 13,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDashboardData(bool isMobile) {
-  final hasAnyStream =
-      _driversStream != null ||
-      _usersStream != null ||
-      _ridesStream != null;
-
-  if (!hasAnyStream) {
-    return _buildRoleMessage();
-  }
-
-  return _buildDashboardStreams(isMobile);
-  }
-
-  Widget _buildDashboardStreams(bool isMobile) {
-  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: _driversStream,
-    builder: (context, driversSnapshot) {
-      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _usersStream,
-        builder: (context, usersSnapshot) {
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _ridesStream,
-            builder: (context, ridesSnapshot) {
-              final error = _getFirstError(
-                driversSnapshot,
-                usersSnapshot,
-                ridesSnapshot,
-              );
-
-              if (error != null) {
-                return _buildErrorPanel(error);
-              }
-
-              final isLoading =
-                  (_driversStream != null &&
-                      driversSnapshot.connectionState ==
-                          ConnectionState.waiting) ||
-                  (_usersStream != null &&
-                      usersSnapshot.connectionState ==
-                          ConnectionState.waiting) ||
-                  (_ridesStream != null &&
-                      ridesSnapshot.connectionState ==
-                          ConnectionState.waiting);
-
-              if (isLoading) {
-                return _buildLoadingPanel();
-              }
-
-              final drivers = driversSnapshot.data?.docs ??
-                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-              final users = usersSnapshot.data?.docs ??
-                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-              final rides = ridesSnapshot.data?.docs ??
-                  <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-              final stats = _calculateStats(rides);
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildStatsGrid(
-                    driversCount: drivers.length,
-                    usersCount: users.length,
-                    activeTrips: stats.active,
-                    completedTrips: stats.completed,
-                    isMobile: isMobile,
-                  ),
-                  if (_ridesStream != null) ...[
-                    const SizedBox(height: 26),
-                    _buildContentGrid(
-                      rides: rides,
-                      stats: stats,
-                      isMobile: isMobile,
-                    ),
-                  ],
-                ],
-              );
-            },
-          );
-        },
-      );
-    },
-  );
-  }
-
-  Widget _buildRoleMessage() {
-  String title;
-  String message;
-  IconData icon;
-
-  switch (widget.role) {
-    case 'support':
-      title = 'داشبورد پشتیبانی';
-      message = 'برای مدیریت درخواست‌ها از بخش پشتیبانی استفاده کنید.';
-      icon = Icons.support_agent_rounded;
-      break;
-
-    case 'finance':
-      title = 'داشبورد مالی';
-      message = 'برای مدیریت کمیسیون و کرایه‌ها از منوی مالی استفاده کنید.';
-      icon = Icons.account_balance_wallet_rounded;
-      break;
-
-    default:
-      title = 'داشبورد';
-      message = 'برای این نقش هنوز آماری تعیین نشده است.';
-      icon = Icons.dashboard_rounded;
-  }
-
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(28),
-    decoration: _cardDecoration(),
-    child: Column(
-      children: [
-        Icon(
-          icon,
-          size: 54,
-          color: AppColors.primary,
-        ),
-        const SizedBox(height: 14),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
             color: AppColors.primary,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.dashboard_rounded,
+            color: Colors.white,
+            size: 26,
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 13,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'داشبورد',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'نمای کلی سفیر؛ آمار امروز و آخرین سفرها',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: _refresh,
+          icon: const Icon(Icons.refresh_rounded, size: 19),
+          label: const Text('به‌روزرسانی'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.brand,
+            side: BorderSide(color: AppColors.border),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         ),
       ],
-    ),
-  );
+    );
   }
 
-  Widget _buildStatsGrid({
-    required int driversCount,
-    required int usersCount,
-    required int activeTrips,
-    required int completedTrips,
-    required bool isMobile,
-  }) {
-    final cards = [
-      _StatData(
-        title: 'total_drivers'.tr(),
-        value: driversCount.toString(),
-        icon: Icons.local_taxi_rounded,
-        color: const Color(0xFF5B5FEF),
-        subtitle: 'راننده ثبت‌شده',
-      ),
-      _StatData(
-        title: 'total_users'.tr(),
-        value: usersCount.toString(),
-        icon: Icons.people_alt_rounded,
-        color: const Color(0xFF159DCE),
-        subtitle: 'مسافر ثبت‌شده',
-      ),
-      _StatData(
-        title: 'active_trips'.tr(),
-        value: activeTrips.toString(),
-        icon: Icons.navigation_rounded,
-        color: const Color(0xFFF59E0B),
-        subtitle: 'سفر در جریان',
-      ),
-      _StatData(
-        title: 'completed_trips'.tr(),
-        value: completedTrips.toString(),
-        icon: Icons.check_circle_rounded,
-        color: const Color(0xFF16A36A),
-        subtitle: 'سفر تکمیل‌شده',
-      ),
-    ];
+  Widget _buildBody(bool isMobile) {
+    return FutureBuilder<_Stats>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        final loading = snapshot.connectionState == ConnectionState.waiting;
+        final stats = snapshot.data ?? const _Stats();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-
-        if (width < 620) {
-          return Column(
-            children: [
-              for (int i = 0; i < cards.length; i += 2)
-                Padding(
-                  padding: EdgeInsets.only(
-                    bottom: i + 2 < cards.length ? 14 : 0,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(child: _buildStatCard(cards[i])),
-                      if (i + 1 < cards.length) ...[
-                        const SizedBox(width: 14),
-                        Expanded(child: _buildStatCard(cards[i + 1])),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          );
+        String v(int? n) {
+          if (loading) return '…';
+          return n == null ? '--' : AdminFormat.toFa(n);
         }
 
-        final cardWidth = (width - 42) / 4;
+        final cards = <_StatData>[
+          if (_canDrivers)
+            _StatData(
+              title: 'رانندگان',
+              value: v(stats.drivers),
+              subtitle: loading || stats.pendingDrivers == null
+                  ? 'راننده ثبت‌شده'
+                  : '${AdminFormat.toFa(stats.pendingDrivers!)} در انتظار تأیید',
+              icon: Icons.local_taxi_rounded,
+              color: AppColors.info,
+              highlight: (stats.pendingDrivers ?? 0) > 0,
+            ),
+          if (_canUsers)
+            _StatData(
+              title: 'مسافران',
+              value: v(stats.users),
+              subtitle: 'مسافر ثبت‌شده',
+              icon: Icons.people_alt_rounded,
+              color: AppColors.brand,
+            ),
+          if (_canTrips)
+            _StatData(
+              title: 'سفرهای در جریان',
+              value: v(stats.activeTrips),
+              subtitle: 'همین حالا',
+              icon: Icons.navigation_rounded,
+              color: AppColors.warning,
+            ),
+          if (_canTrips)
+            _StatData(
+              title: 'تکمیل‌شدهٔ امروز',
+              value: v(stats.completedToday),
+              subtitle: 'سفر تکمیل‌شده',
+              icon: Icons.check_circle_rounded,
+              color: AppColors.ok,
+            ),
+        ];
 
-        return Wrap(
-          spacing: 14,
-          runSpacing: 14,
-          children: cards
-              .map(
-                (card) => SizedBox(
-                  width: cardWidth,
-                  child: _buildStatCard(card),
-                ),
-              )
-              .toList(),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatsGrid(cards),
+            if (_canTrips) ...[
+              const SizedBox(height: 22),
+              _buildContentGrid(stats, loading, isMobile),
+            ],
+          ],
         );
       },
     );
   }
 
-  Widget _buildStatCard(_StatData data) {
+  Widget _buildStatsGrid(List<_StatData> cards) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width < 620 ? 2 : (cards.length >= 4 ? 4 : cards.length);
+        const gap = 12.0;
+        final cardWidth = (width - gap * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final c in cards)
+              SizedBox(width: cardWidth, child: _buildStatCard(c)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatCard(_StatData d) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _cardDecoration(),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: d.highlight ? d.color.withOpacity(0.55) : AppColors.border,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: data.color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  data.icon,
-                  color: data.color,
-                  size: 24,
-                ),
-              ),
-              Icon(
-                Icons.more_horiz_rounded,
-                color: Colors.grey.shade400,
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.soft(d.color),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(d.icon, color: d.color, size: 22),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           Text(
-            data.title,
+            d.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(
-            data.value,
+            d.value,
             style: TextStyle(
-              color: data.color,
-              fontSize: 27,
+              color: AppColors.textPrimary,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(
-            data.subtitle,
+            d.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.grey.shade500,
-              fontSize: 11,
+              color: d.highlight ? d.color : AppColors.textMuted,
+              fontSize: 12,
+              fontWeight: d.highlight ? FontWeight.w700 : FontWeight.normal,
             ),
           ),
         ],
@@ -470,171 +370,177 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _buildContentGrid({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> rides,
-    required _RideStats stats,
-    required bool isMobile,
-  }) {
-    final activityCard = _buildRecentRides(rides);
-    final summaryCard = _buildTripSummary(stats);
+  Widget _buildContentGrid(_Stats stats, bool loading, bool isMobile) {
+    final recent = _buildRecentRides();
+    final summary = _buildTripSummary(stats, loading);
 
     if (isMobile) {
-      return Column(
-        children: [
-          activityCard,
-          const SizedBox(height: 18),
-          summaryCard,
-        ],
-      );
+      return Column(children: [recent, const SizedBox(height: 16), summary]);
     }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 3, child: activityCard),
-        const SizedBox(width: 18),
-        Expanded(flex: 2, child: summaryCard),
+        Expanded(flex: 3, child: recent),
+        const SizedBox(width: 16),
+        Expanded(flex: 2, child: summary),
       ],
     );
   }
 
-  Widget _buildRecentRides(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> rides,
-  ) {
-    final sortedRides = [...rides];
-
-    sortedRides.sort((a, b) {
-      final aTime = _readTimestamp(a.data());
-      final bTime = _readTimestamp(b.data());
-
-      return (bTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(aTime?.millisecondsSinceEpoch ?? 0);
-    });
-
-    final latestRides = sortedRides.take(8).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: _cardDecoration(),
+  Widget _buildRecentRides() {
+    return AdminCard(
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader(
+          _sectionHeader(
             icon: Icons.history_rounded,
-            title: 'فعالیت‌های اخیر',
-            subtitle: 'آخرین سفرهای ثبت‌شده در سیستم',
+            title: 'آخرین سفرها',
+            subtitle: '۸ سفر اخیر ثبت‌شده در سیستم (زنده)',
           ),
-          const SizedBox(height: 18),
-          if (latestRides.isEmpty)
-            _buildEmptyState(
-              icon: Icons.local_taxi_outlined,
-              message: 'هنوز سفری ثبت نشده است',
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: latestRides.length,
-              separatorBuilder: (_, __) => Divider(
-                height: 22,
-                color: Colors.grey.shade200,
-              ),
-              itemBuilder: (context, index) {
-                final data = latestRides[index].data();
-                final status = _normalizeStatus(
-                  data['status']?.toString() ?? '',
+          const SizedBox(height: 16),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _recentStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return AdminStateMessage(
+                  icon: Icons.error_outline_rounded,
+                  message: 'خطا در خواندن سفرها:\n${snapshot.error}',
+                  color: AppColors.danger,
                 );
+              }
+              if (!snapshot.hasData) return const AdminLoading();
 
-                return _buildRideItem(
-                  title: _rideTitle(status),
-                  subtitle: _rideSubtitle(data),
-                  status: _statusLabel(status),
-                  color: _statusColor(status),
-                  time: _formatTime(_readTimestamp(data)),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTripSummary(_RideStats stats) {
-    final total = stats.total == 0 ? 1 : stats.total;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader(
-            icon: Icons.analytics_outlined,
-            title: 'خلاصه سفرها',
-            subtitle: 'وضعیت فعلی سفرهای سیستم',
-          ),
-          const SizedBox(height: 22),
-          _buildProgressRow(
-            title: 'در حال انجام',
-            value: stats.active,
-            total: total,
-            color: Colors.orange,
-          ),
-          const SizedBox(height: 18),
-          _buildProgressRow(
-            title: 'تکمیل‌شده',
-            value: stats.completed,
-            total: total,
-            color: Colors.green,
-          ),
-          const SizedBox(height: 18),
-          _buildProgressRow(
-            title: 'لغوشده',
-            value: stats.cancelled,
-            total: total,
-            color: Colors.red,
-          ),
-          const SizedBox(height: 22),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.cloud_done_rounded,
-                  color: AppColors.primary,
-                  size: 22,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'اطلاعات به‌صورت زنده از Firebase دریافت می‌شود',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 12,
-                      height: 1.4,
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 30),
+                  child: Center(
+                    child: Text(
+                      'هنوز سفری ثبت نشده است',
+                      style: TextStyle(color: AppColors.textMuted),
                     ),
                   ),
-                ),
-              ],
-            ),
+                );
+              }
+
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: docs.length,
+                separatorBuilder: (_, __) =>
+                    Divider(height: 22, color: AppColors.border),
+                itemBuilder: (context, i) => _rideItem(docs[i].data()),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildProgressRow({
-    required String title,
-    required int value,
-    required int total,
-    required Color color,
-  }) {
-    final percentage = total == 0 ? 0.0 : value / total;
+  Widget _rideItem(Map<String, dynamic> data) {
+    final status = _normalize(data['status']?.toString() ?? '');
+    final color = _statusColor(status);
+    final date = AdminFormat.readDate(data['createdAt'] ?? data['created_at']);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.soft(color),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.local_taxi_rounded, color: color, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _rideSubtitle(data),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  AdminChip(
+                    label: _statusLabel(status, data),
+                    icon: Icons.circle,
+                    color: color,
+                  ),
+                  if (date != null) ...[
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        _timeAgo(date),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTripSummary(_Stats stats, bool loading) {
+    final active = stats.activeTrips ?? 0;
+    final done = stats.completedToday ?? 0;
+    final cancelled = stats.cancelledToday ?? 0;
+    final total = active + done + cancelled;
+
+    return AdminCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.analytics_outlined,
+            title: 'خلاصهٔ سفرها',
+            subtitle: 'در جریان و امروز',
+          ),
+          const SizedBox(height: 20),
+          _progressRow('در جریان', stats.activeTrips, active, total,
+              AppColors.warning, loading),
+          const SizedBox(height: 16),
+          _progressRow('تکمیل‌شدهٔ امروز', stats.completedToday, done, total,
+              AppColors.ok, loading),
+          const SizedBox(height: 16),
+          _progressRow('لغوشدهٔ امروز', stats.cancelledToday, cancelled, total,
+              AppColors.danger, loading),
+        ],
+      ),
+    );
+  }
+
+  Widget _progressRow(
+    String title,
+    int? raw,
+    int value,
+    int total,
+    Color color,
+    bool loading,
+  ) {
+    final pct = total == 0 ? 0.0 : value / total;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,17 +550,15 @@ class _DashboardState extends State<Dashboard> {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
+                color: AppColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
             Text(
-              value.toString(),
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-              ),
+              loading ? '…' : (raw == null ? '--' : AdminFormat.toFa(raw)),
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -662,9 +566,9 @@ class _DashboardState extends State<Dashboard> {
         ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: LinearProgressIndicator(
-            value: percentage.clamp(0.0, 1.0),
+            value: pct.clamp(0.0, 1.0),
             minHeight: 8,
-            backgroundColor: color.withOpacity(0.10),
+            backgroundColor: AppColors.soft(color),
             valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
         ),
@@ -672,7 +576,7 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _buildSectionHeader({
+  Widget _sectionHeader({
     required IconData icon,
     required String title,
     required String subtitle,
@@ -682,14 +586,10 @@ class _DashboardState extends State<Dashboard> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.09),
+            color: AppColors.brandSoft,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color: AppColors.primary,
-            size: 22,
-          ),
+          child: Icon(icon, color: AppColors.brand, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -698,19 +598,16 @@ class _DashboardState extends State<Dashboard> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
             ],
           ),
@@ -719,260 +616,59 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _buildRideItem({
-    required String title,
-    required String subtitle,
-    required String status,
-    required Color color,
-    required String time,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.11),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Icon(
-            Icons.local_taxi_rounded,
-            color: color,
-            size: 22,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 11,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  if (time.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      time,
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildRoleMessage() {
+    String title;
+    String message;
+    IconData icon;
 
-  Widget _buildLoadingPanel() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(50),
-      decoration: _cardDecoration(),
-      child: const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorPanel(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            color: Colors.red.shade700,
-            size: 28,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: SelectableText(
-              message,
-              style: TextStyle(
-                color: Colors.red.shade800,
-                fontSize: 13,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState({
-    required IconData icon,
-    required String message,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 34),
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            size: 44,
-            color: Colors.grey.shade300,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            style: TextStyle(
-              color: Colors.grey.shade500,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: Colors.grey.shade100,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    );
-  }
-
-  _RideStats _calculateStats(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> rides,
-  ) {
-    int active = 0;
-    int completed = 0;
-    int cancelled = 0;
-
-    for (final ride in rides) {
-      final status = _normalizeStatus(
-        ride.data()['status']?.toString() ?? '',
-      );
-
-      if (_isActiveTrip(status)) {
-        active++;
-      } else if (status == 'completed') {
-        completed++;
-      } else if (_isCancelledTrip(status)) {
-        cancelled++;
-      }
+    switch (widget.role) {
+      case 'support':
+        title = 'داشبورد پشتیبانی';
+        message = 'برای مدیریت درخواست‌ها از بخش پشتیبانی استفاده کنید.';
+        icon = Icons.support_agent_rounded;
+        break;
+      case 'finance':
+        title = 'داشبورد مالی';
+        message = 'برای مدیریت کمیسیون و کرایه‌ها از منوی مالی استفاده کنید.';
+        icon = Icons.account_balance_wallet_rounded;
+        break;
+      default:
+        title = 'داشبورد';
+        message = 'برای این حساب هنوز آماری تعیین نشده است.';
+        icon = Icons.dashboard_rounded;
     }
 
-    return _RideStats(
-      total: rides.length,
-      active: active,
-      completed: completed,
-      cancelled: cancelled,
+    return AdminCard(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        children: [
+          Icon(icon, size: 52, color: AppColors.brand),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ),
+        ],
+      ),
     );
   }
 
-  String? _getFirstError(
-  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> drivers,
-  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> users,
-  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> rides,
-) {
-  if (drivers.hasError) {
-    return 'خطا در خواندن راننده‌ها: ${drivers.error}';
-  }
+  // ───────── کمکی‌ها ─────────
 
-  if (users.hasError) {
-    return 'خطا در خواندن مسافرها: ${users.error}';
-  }
+  String _normalize(String value) =>
+      value.trim().toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
 
-  if (rides.hasError) {
-    return 'خطا در خواندن سفرها: ${rides.error}';
-  }
-
-  return null;
-  }
-
-  String _normalizeStatus(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
-  }
-
-  bool _isActiveTrip(String status) {
-    return status == 'searching' ||
-        status == 'accepted' ||
-        status == 'arrived' ||
-        status == 'ontrip' ||
-        status == 'on_trip';
-  }
-
-  bool _isCancelledTrip(String status) {
-    return status == 'cancelled' ||
-        status == 'cancelled_by_driver' ||
-        status == 'cancelled_by_passenger' ||
-        status == 'cancelled_by_user' ||
-        status == 'cancelledbydriver' ||
-        status == 'cancelledbypassenger' ||
-        status == 'cancelledbyuser';
-  }
-
-  String _statusLabel(String status) {
+  String _statusLabel(String status, Map<String, dynamic> data) {
     switch (status) {
       case 'searching':
         return 'در انتظار راننده';
@@ -982,237 +678,124 @@ class _DashboardState extends State<Dashboard> {
         return 'راننده رسیده';
       case 'ontrip':
       case 'on_trip':
-        return 'در حال انجام';
+        return 'در حال سفر';
       case 'completed':
+      case 'ended':
         return 'تکمیل‌شده';
-      case 'cancelled':
       case 'cancelled_by_driver':
-      case 'cancelledbydriver':
-        return 'لغوشده توسط راننده';
+        return 'لغو توسط راننده';
       case 'cancelled_by_passenger':
-      case 'cancelled_by_user':
-      case 'cancelledbypassenger':
-      case 'cancelledbyuser':
-        return 'لغوشده توسط مسافر';
+        return 'لغو توسط مسافر';
+      case 'cancelled':
+        return data['cancelled_by']?.toString().toLowerCase() == 'admin'
+            ? 'لغو توسط ادمین'
+            : 'لغوشده';
       default:
         return 'نامشخص';
-    }
-  }
-
-  String _rideTitle(String status) {
-    switch (status) {
-      case 'searching':
-        return 'درخواست سفر جدید';
-      case 'accepted':
-        return 'سفر پذیرفته شد';
-      case 'arrived':
-        return 'راننده به مبدأ رسید';
-      case 'ontrip':
-      case 'on_trip':
-        return 'سفر در حال انجام';
-      case 'completed':
-        return 'سفر تکمیل شد';
-      default:
-        return 'به‌روزرسانی سفر';
     }
   }
 
   Color _statusColor(String status) {
     switch (status) {
       case 'searching':
-        return Colors.amber.shade800;
+        return AppColors.warning;
       case 'accepted':
-        return Colors.orange;
       case 'arrived':
-        return Colors.deepPurple;
+        return AppColors.info;
       case 'ontrip':
       case 'on_trip':
-        return Colors.blue;
+        return AppColors.brand;
       case 'completed':
-        return Colors.green;
+      case 'ended':
+        return AppColors.ok;
       case 'cancelled':
       case 'cancelled_by_driver':
       case 'cancelled_by_passenger':
-      case 'cancelled_by_user':
-      case 'cancelledbydriver':
-      case 'cancelledbypassenger':
-      case 'cancelledbyuser':
-        return Colors.red;
+        return AppColors.danger;
       default:
-        return Colors.grey;
+        return AppColors.textMuted;
     }
   }
 
   String _rideSubtitle(Map<String, dynamic> data) {
-    final passengerName = _readString(
-          data,
-          [
-            'passengername',
-            'passengerName',
-            'userName',
-            'username',
-            'fullname',
-            'fullName',
-          ],
-        ) ??
+    final passenger = _readString(data, const [
+          'passenger_name',
+          'passengername',
+          'passengerName',
+          'userName',
+          'username',
+        ]) ??
         'مسافر';
+    final driver =
+        _readString(data, const ['driver_name', 'drivername', 'driverName']);
+    final origin = _readString(data, const [
+      'originAddress',
+      'origin_address',
+      'originaddress',
+      'pickupAddress',
+      'origin',
+    ]);
+    final destination = _readString(data, const [
+      'destinationAddress',
+      'destination_address',
+      'destinationaddress',
+      'dropoffAddress',
+      'destination',
+    ]);
 
-    final driverName = _readString(
-      data,
-      [
-        'drivername',
-        'driverName',
-        'drivername',
-      ],
-    );
-
-    final origin = _readAddress(
-      data,
-      [
-        'originaddress',
-        'originAddress',
-        'pickupaddress',
-        'pickupAddress',
-        'origin',
-        'pickup',
-      ],
-    );
-
-    final destination = _readAddress(
-      data,
-      [
-        'destinationaddress',
-        'destinationAddress',
-        'dropoffaddress',
-        'dropoffAddress',
-        'destination',
-        'dropoff',
-      ],
-    );
-
-    final parts = <String>[
-      passengerName,
-      if (driverName != null && driverName.isNotEmpty)
-        'راننده: $driverName',
-      if (origin != null && origin.isNotEmpty) origin,
-      if (destination != null && destination.isNotEmpty)
-        'به $destination',
-    ];
-
-    return parts.join(' • ');
+    return [
+      passenger,
+      if (driver != null) 'راننده: $driver',
+      if (origin != null) origin,
+      if (destination != null) 'به $destination',
+    ].join(' • ');
   }
 
-  String? _readString(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
+  String? _readString(Map<String, dynamic> data, List<String> keys) {
     for (final key in keys) {
       final value = data[key];
-
       if (value == null) continue;
 
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
+      if (value is String && value.trim().isNotEmpty) return value.trim();
 
       if (value is Map) {
         final nested = value['address'] ?? value['name'] ?? value['title'];
-
         if (nested != null && nested.toString().trim().isNotEmpty) {
           return nested.toString().trim();
         }
       }
     }
-
     return null;
   }
 
-  String? _readAddress(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
-    return _readString(data, keys);
-  }
+  String _timeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
 
-  Timestamp? _readTimestamp(Map<String, dynamic> data) {
-    const keys = [
-      'updatedAt',
-      'updatedat',
-      'createdAt',
-      'createdat',
-      'completedAt',
-      'completedat',
-      'startedAt',
-      'startedat',
-      'arrivedAt',
-      'arrivedat',
-      'timestamp',
-      'time',
-    ];
-
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value is Timestamp) {
-        return value;
-      }
-
-      if (value is DateTime) {
-        return Timestamp.fromDate(value);
-      }
+    if (diff.isNegative || diff.inMinutes < 1) return 'همین حالا';
+    if (diff.inHours < 1) {
+      return '${AdminFormat.toFa(diff.inMinutes)} دقیقه پیش';
     }
-
-    return null;
-  }
-
-  String _formatTime(Timestamp? timestamp) {
-    if (timestamp == null) return '';
-
-    final date = timestamp.toDate();
-    final difference = DateTime.now().difference(date);
-
-    if (difference.isNegative || difference.inMinutes < 1) {
-      return 'همین حالا';
+    if (diff.inDays < 1) {
+      return '${AdminFormat.toFa(diff.inHours)} ساعت پیش';
     }
-
-    if (difference.inHours < 1) {
-      return '${difference.inMinutes} دقیقه پیش';
-    }
-
-    if (difference.inDays < 1) {
-      return '${difference.inHours} ساعت پیش';
-    }
-
-    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+    return AdminFormat.jalaliDate(date);
   }
 }
 
 class _StatData {
   final String title;
   final String value;
+  final String subtitle;
   final IconData icon;
   final Color color;
-  final String subtitle;
+  final bool highlight;
 
   const _StatData({
     required this.title,
     required this.value,
+    required this.subtitle,
     required this.icon,
     required this.color,
-    required this.subtitle,
-  });
-}
-
-class _RideStats {
-  final int total;
-  final int active;
-  final int completed;
-  final int cancelled;
-
-  const _RideStats({
-    required this.total,
-    required this.active,
-    required this.completed,
-    required this.cancelled,
+    this.highlight = false,
   });
 }
