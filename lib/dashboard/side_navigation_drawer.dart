@@ -1,6 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_admin_scaffold/admin_scaffold.dart';
 
@@ -13,6 +12,8 @@ import 'package:safir_admin/pages/notifications_page.dart';
 import 'package:safir_admin/pages/pricing_settings_page.dart';
 import 'package:safir_admin/pages/trips_page.dart';
 import 'package:safir_admin/pages/user_page.dart';
+import 'package:safir_admin/theme/admin_theme_controller.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class SideNavigationDrawer extends StatefulWidget {
   final Locale currentLocale;
@@ -29,22 +30,17 @@ class SideNavigationDrawer extends StatefulWidget {
   });
 
   @override
-  State<SideNavigationDrawer> createState() =>
-      _SideNavigationDrawerState();
+  State<SideNavigationDrawer> createState() => _SideNavigationDrawerState();
 }
 
-class _SideNavigationDrawerState
-    extends State<SideNavigationDrawer> {
+class _SideNavigationDrawerState extends State<SideNavigationDrawer> {
   String currentRoute = 'dashboard';
   bool _isLoggingOut = false;
 
   bool get isSuperAdmin => widget.role == 'superAdmin';
 
   bool canAccess(String section) {
-    if (isSuperAdmin) {
-      return true;
-    }
-
+    if (isSuperAdmin) return true;
     return widget.allowedSections.contains(section);
   }
 
@@ -71,26 +67,36 @@ class _SideNavigationDrawerState
     case UserPage.id:
       return UserPage(
         key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
       );
 
     case TripsPage.id:
       return TripsPage(
         key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
       );
 
     case NotificationsPage.id:
       return NotificationsPage(
         key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
       );
 
     case 'earnings':
       return EarningsPage(
         key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
       );
 
     case 'pricing_settings':
       return PricingSettingsPage(
         key: langKey,
+        role: widget.role,
+        permissions: widget.permissions,
       );
 
     case StaffPage.id:
@@ -111,126 +117,77 @@ class _SideNavigationDrawerState
   Future<void> _logout() async {
     if (_isLoggingOut) return;
 
-    setState(() {
-      _isLoggingOut = true;
-    });
+    setState(() => _isLoggingOut = true);
 
     try {
       await FirebaseAuth.instance.signOut();
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _isLoggingOut = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'خطا در خروج از حساب: ${e.message ?? e.code}',
-          ),
-          backgroundColor: Colors.red,
-        ),
+      setState(() => _isLoggingOut = false);
+      showAdminSnack(
+        context,
+        'خطا در خروج از حساب: ${e.message ?? e.code}',
+        tone: AdminTone.error,
       );
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _isLoggingOut = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در خروج از حساب: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() => _isLoggingOut = false);
+      showAdminSnack(context, 'خطا در خروج از حساب: $e', tone: AdminTone.error);
     }
   }
 
-  Future<void> _showLogoutDialog(
-    BuildContext context,
-  ) async {
+  Future<void> _showLogoutDialog(BuildContext context) async {
     if (_isLoggingOut) return;
 
-    final shouldLogout = await showDialog<bool>(
+    final ok = await showAdminConfirm(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('خروج از حساب مدیریت'),
-          content: const Text(
-            'آیا مطمئن هستید که می‌خواهید از پنل مدیریت خارج شوید؟',
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text(
-                'انصراف',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('خروج'),
-            ),
-          ],
-        );
-      },
+      title: 'خروج از حساب مدیریت',
+      message: 'آیا مطمئن هستید که می‌خواهید از پنل مدیریت خارج شوید؟',
+      confirmText: 'خروج',
+      color: AppColors.danger,
     );
 
-    if (shouldLogout == true && mounted) {
-      await _logout();
-    }
+    if (ok == true && mounted) await _logout();
   }
 
   void _showLanguageDialog(BuildContext context) {
-    String selectedLang = context.locale.languageCode;
-
-    String titleText = 'انتخاب زبان / ژبه انتخاب کړئ';
-    String cancelText = 'انصراف';
-    String confirmText = 'تأیید';
-
-    if (context.locale.languageCode == 'en') {
-      titleText = 'Select Language';
-      cancelText = 'Cancel';
-      confirmText = 'Confirm';
-    } else if (context.locale.languageCode == 'ps') {
-      titleText = 'ژبه انتخاب کړئ';
-      cancelText = 'بیاتوان';
-      confirmText = 'تائید';
-    }
+    String selected = context.locale.languageCode;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Widget option(String title, String value) {
+              return RadioListTile<String>(
+                title: Text(
+                  title,
+                  style: TextStyle(color: AppColors.textPrimary),
+                ),
+                value: value,
+                groupValue: selected,
+                activeColor: AppColors.brand,
+                onChanged: (v) {
+                  if (v == null) return;
+                  setDialogState(() => selected = v);
+                },
+              );
+            }
+
             return AlertDialog(
+              backgroundColor: AppColors.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
               title: Row(
                 children: [
-                  const Icon(
-                    Icons.language,
-                    color: AppColors.primary,
-                  ),
+                  Icon(Icons.language, color: AppColors.brand),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      titleText,
-                      style: const TextStyle(
+                      'انتخاب زبان / Language',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -241,82 +198,29 @@ class _SideNavigationDrawerState
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  RadioListTile<String>(
-                    title: const Text('دری (Farsi)'),
-                    value: 'fa',
-                    groupValue: selectedLang,
-                    activeColor: AppColors.primary,
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setDialogState(() {
-                        selectedLang = value;
-                      });
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('پښتو (Pashto)'),
-                    value: 'ps',
-                    groupValue: selectedLang,
-                    activeColor: AppColors.primary,
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setDialogState(() {
-                        selectedLang = value;
-                      });
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('English'),
-                    value: 'en',
-                    groupValue: selectedLang,
-                    activeColor: AppColors.primary,
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setDialogState(() {
-                        selectedLang = value;
-                      });
-                    },
-                  ),
+                  option('دری (Farsi)', 'fa'),
+                  option('پښتو (Pashto)', 'ps'),
+                  option('English', 'en'),
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
+                  onPressed: () => Navigator.of(dialogContext).pop(),
                   child: Text(
-                    cancelText,
-                    style: const TextStyle(
-                      color: Colors.grey,
-                    ),
+                    'انصراف',
+                    style: TextStyle(color: AppColors.textSecondary),
                   ),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
                   onPressed: () async {
                     Navigator.of(dialogContext).pop();
 
-                    if (selectedLang !=
-                        context.locale.languageCode) {
-                      await context.setLocale(
-                        Locale(selectedLang),
-                      );
-
-                      if (mounted) {
-                        setState(() {});
-                      }
+                    if (selected != context.locale.languageCode) {
+                      await context.setLocale(Locale(selected));
+                      if (mounted) setState(() {});
                     }
                   },
-                  child: Text(confirmText),
+                  child: const Text('تأیید'),
                 ),
               ],
             );
@@ -329,84 +233,30 @@ class _SideNavigationDrawerState
   List<AdminMenuItem> _buildMenuItems() {
     final items = <AdminMenuItem>[];
 
-    if (isSuperAdmin || canAccess('dashboard')) {
-      items.add(
-        AdminMenuItem(
-          title: 'home'.tr(),
-          route: 'dashboard',
-          icon: CupertinoIcons.rectangle_grid_2x2_fill,
-        ),
-      );
+    void add(String section, String title, String route, IconData icon) {
+      if (canAccess(section)) {
+        items.add(AdminMenuItem(title: title, route: route, icon: icon));
+      }
     }
 
-    if (isSuperAdmin || canAccess('drivers')) {
-      items.add(
-        AdminMenuItem(
-          title: 'manage_drivers'.tr(),
-          route: DriverPage.id,
-          icon: CupertinoIcons.car_detailed,
-        ),
-      );
-    }
+    add('dashboard', 'داشبورد', 'dashboard', Icons.dashboard_rounded);
+    add('drivers', 'رانندگان', DriverPage.id, Icons.drive_eta_rounded);
+    add('users', 'مسافران', UserPage.id, Icons.people_alt_rounded);
+    add('trips', 'سفرها', TripsPage.id, Icons.route_rounded);
+    add('support', 'پشتیبانی', NotificationsPage.id,
+        Icons.support_agent_rounded);
+    add('commission', 'کمیسیون', 'earnings',
+        Icons.account_balance_wallet_rounded);
+    add('fare', 'تنظیمات کرایه', 'pricing_settings', Icons.tune_rounded);
 
-    if (isSuperAdmin || canAccess('users')) {
-      items.add(
-        AdminMenuItem(
-          title: 'manage_users'.tr(),
-          route: UserPage.id,
-          icon: CupertinoIcons.person_2_fill,
-        ),
-      );
-    }
-
-    if (isSuperAdmin || canAccess('trips')) {
-      items.add(
-        AdminMenuItem(
-          title: 'active_rides'.tr(),
-          route: TripsPage.id,
-          icon: CupertinoIcons.location_fill,
-        ),
-      );
-    }
-
-    if (isSuperAdmin || canAccess('support')) {
-      items.add(
-        AdminMenuItem(
-          title: 'پشتیبانی',
-          route: NotificationsPage.id,
-          icon: CupertinoIcons.bell_fill,
-        ),
-      );
-    }
-
-    if (isSuperAdmin || canAccess('commission')) {
-      items.add(
-        AdminMenuItem(
-          title: 'کمیسیون',
-          route: 'earnings',
-          icon: CupertinoIcons.money_dollar,
-        ),
-      );
-    }
-
-    if (isSuperAdmin || canAccess('fare')) {
-      items.add(
-        AdminMenuItem(
-          title: 'تنظیمات کرایه',
-          route: 'pricing_settings',
-          icon: CupertinoIcons.slider_horizontal_3,
-        ),
-      );
-    }
-    
     if (isSuperAdmin) {
-  items.add(
-    AdminMenuItem(
-      title: 'مدیریت کارمندان',
-      route: StaffPage.id,
-      icon: CupertinoIcons.person_3_fill,
-    ),
-  );
+      items.add(
+        AdminMenuItem(
+          title: 'مدیریت کارمندان',
+          route: StaffPage.id,
+          icon: Icons.manage_accounts_rounded,
+        ),
+      );
     }
 
     return items;
@@ -414,16 +264,13 @@ class _SideNavigationDrawerState
 
   @override
   Widget build(BuildContext context) {
-    final sideBarBg = AppColors.primary;
-    final activeItemBg = Colors.white.withOpacity(0.15);
-    const textStyleColor = Colors.white70;
-    const activeTextColor = Colors.white;
-    final currentLangCode = context.locale.languageCode;
-
+    final langCode = context.locale.languageCode;
+    final dark = AppColors.isDark;
     final menuItems = _buildMenuItems();
 
     if (menuItems.isEmpty) {
       return Scaffold(
+        backgroundColor: AppColors.bg,
         appBar: AppBar(
           title: const Text('Safir Taxi'),
           actions: [
@@ -433,105 +280,105 @@ class _SideNavigationDrawerState
             ),
           ],
         ),
-        body: const Center(
+        body: Center(
           child: Text(
             'برای این حساب هیچ بخشی تعیین نشده است.',
+            style: TextStyle(color: AppColors.textSecondary),
           ),
         ),
       );
     }
 
-    final routes = menuItems
-        .map((item) => item.route)
-        .whereType<String>()
-        .toList();
+    final routes =
+        menuItems.map((item) => item.route).whereType<String>().toList();
 
     if (!routes.contains(currentRoute)) {
       currentRoute = routes.first;
     }
 
     return Scaffold(
+      backgroundColor: AppColors.bg,
       body: AdminScaffold(
-        key: ValueKey(
-          'admin_scaffold_$currentLangCode',
-        ),
+        key: ValueKey('admin_scaffold_${langCode}_$dark'),
+        backgroundColor: AppColors.bg,
         appBar: AppBar(
           centerTitle: false,
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.textPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(
-            color: Colors.white,
-          ),
-          title: const Text(
-            'Safir Taxi',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              fontSize: 18,
-            ),
+          scrolledUnderElevation: 0,
+          shape: Border(bottom: BorderSide(color: AppColors.border)),
+          iconTheme: IconThemeData(color: AppColors.textPrimary),
+          title: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.local_taxi_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Safir Taxi',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                  fontSize: 17,
+                ),
+              ),
+            ],
           ),
           actions: [
+            const AdminThemeToggleButton(),
             IconButton(
-              icon: const Icon(
-                Icons.language,
-                color: Colors.white,
-              ),
+              icon: Icon(Icons.language, color: AppColors.textSecondary),
               tooltip: 'تغییر زبان',
-              onPressed: () {
-                _showLanguageDialog(context);
-              },
+              onPressed: () => _showLanguageDialog(context),
             ),
             IconButton(
               icon: _isLoggingOut
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                        color: Colors.white,
+                        color: AppColors.brand,
                         strokeWidth: 2,
                       ),
                     )
-                  : const Icon(
-                      Icons.logout_rounded,
-                      color: Colors.white,
-                    ),
+                  : Icon(Icons.logout_rounded, color: AppColors.textSecondary),
               tooltip: 'خروج از حساب',
-              onPressed: _isLoggingOut
-                  ? null
-                  : () {
-                      _showLogoutDialog(context);
-                    },
+              onPressed:
+                  _isLoggingOut ? null : () => _showLogoutDialog(context),
             ),
             const SizedBox(width: 8),
           ],
         ),
         sideBar: SideBar(
-          key: ValueKey(
-            'sidebar_$currentLangCode',
-          ),
-          backgroundColor: sideBarBg,
-          textStyle: const TextStyle(
-            color: textStyleColor,
-            fontSize: 13,
-          ),
-          activeBackgroundColor: activeItemBg,
-          activeTextStyle: const TextStyle(
-            color: activeTextColor,
+          key: ValueKey('sidebar_${langCode}_$dark'),
+          backgroundColor: AppColors.surface,
+          textStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+          activeBackgroundColor: AppColors.brandSoft,
+          activeTextStyle: TextStyle(
+            color: AppColors.brand,
+            fontSize: 14,
             fontWeight: FontWeight.bold,
           ),
-          borderColor: AppColors.primary.withOpacity(0.3),
-          iconColor: textStyleColor,
-          activeIconColor: activeTextColor,
+          borderColor: AppColors.border,
+          iconColor: AppColors.textMuted,
+          activeIconColor: AppColors.brand,
           items: menuItems,
           selectedRoute: currentRoute,
-          onSelected: (itemSelected) {
-            final route = itemSelected.route;
-
+          onSelected: (item) {
+            final route = item.route;
             if (route == null) return;
-
-            setState(() {
-              currentRoute = route;
-            });
+            setState(() => currentRoute = route);
           },
         ),
         body: getActiveScreen(),
