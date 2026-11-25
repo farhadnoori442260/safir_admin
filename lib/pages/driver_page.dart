@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 import 'package:safir_admin/widgets/drivers_data_list.dart';
 
 class DriverPage extends StatefulWidget {
@@ -21,58 +25,37 @@ class DriverPage extends StatefulWidget {
   State<DriverPage> createState() => _DriverPageState();
 }
 
+class _DriverStats {
+  final int total;
+  final int approved; // تأییدشده و غیرمسدود
+  final int blocked;
+
+  const _DriverStats({
+    required this.total,
+    required this.approved,
+    required this.blocked,
+  });
+
+  int get pending {
+    final v = total - approved - blocked;
+    return v < 0 ? 0 : v;
+  }
+}
+
 class _DriverPageState extends State<DriverPage> {
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
-  String _selectedFilter = 'all';
+  String _selectedFilter = 'all'; // all | pending | approved | blocked
 
-  bool get isSuperAdmin => widget.role == 'superAdmin';
+  late Future<_DriverStats> _statsFuture = _loadStats();
 
-  Map<String, dynamic> get driverPermissions {
-    final rawDriversPermissions = widget.permissions['drivers'];
-
-    if (rawDriversPermissions is Map) {
-      return Map<String, dynamic>.from(
-        rawDriversPermissions,
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'drivers',
+        key: 'view',
       );
-    }
-
-    return <String, dynamic>{};
-  }
-
-  bool canViewDrivers() {
-    if (isSuperAdmin) {
-      return true;
-    }
-
-    return driverPermissions['view'] == true;
-  }
-
-  bool canCreateDriver() {
-    if (isSuperAdmin) {
-      return true;
-    }
-
-    return driverPermissions['create'] == true;
-  }
-
-  bool canUpdateDriver() {
-    if (isSuperAdmin) {
-      return true;
-    }
-
-    return driverPermissions['update'] == true;
-  }
-
-  bool canDeleteDriver() {
-    if (isSuperAdmin) {
-      return true;
-    }
-
-    return driverPermissions['delete'] == true;
-  }
 
   @override
   void dispose() {
@@ -80,14 +63,59 @@ class _DriverPageState extends State<DriverPage> {
     super.dispose();
   }
 
+  /// شمارش سمت سرور؛ وضعیت «مسدود» بر «تأییدشده» اولویت دارد (مثل لیست).
+  Future<_DriverStats> _loadStats() async {
+    final drivers = FirebaseFirestore.instance.collection('drivers');
+
+    final total = (await drivers.count().get()).count ?? 0;
+    final approvedAll = (await drivers
+                .where('isApproved', isEqualTo: true)
+                .count()
+                .get())
+            .count ??
+        0;
+    final blocked = (await drivers
+                .where('isBlocked', isEqualTo: true)
+                .count()
+                .get())
+            .count ??
+        0;
+    final both = (await drivers
+                .where('isApproved', isEqualTo: true)
+                .where('isBlocked', isEqualTo: true)
+                .count()
+                .get())
+            .count ??
+        0;
+
+    return _DriverStats(
+      total: total,
+      approved: approvedAll - both,
+      blocked: blocked,
+    );
+  }
+
+  void _refreshStats() => setState(() => _statsFuture = _loadStats());
+
   @override
   Widget build(BuildContext context) {
-    if (!canViewDrivers()) {
-      return const _DriverAccessDeniedPage();
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'دسترسی به بخش رانندگان ندارید.',
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -98,12 +126,10 @@ class _DriverPageState extends State<DriverPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(isMobile),
-                  const SizedBox(height: 22),
-                  _buildSummaryCards(isMobile),
-                  const SizedBox(height: 22),
-                  _buildFilters(isMobile),
-                  const SizedBox(height: 18),
+                  _buildHeader(),
+                  const SizedBox(height: 20),
+                  _buildSummaryCards(),
+                  const SizedBox(height: 20),
                   _buildDriversTable(),
                 ],
               ),
@@ -114,31 +140,19 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildHeader(bool isMobile) {
-    final title = Row(
+  Widget _buildHeader() {
+    return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary,
-                AppColors.primary.withOpacity(0.72),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.20),
-                blurRadius: 14,
-                offset: const Offset(0, 7),
-              ),
-            ],
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: const Icon(
             Icons.local_taxi_rounded,
             color: Colors.white,
-            size: 28,
+            size: 26,
           ),
         ),
         const SizedBox(width: 14),
@@ -147,390 +161,276 @@ class _DriverPageState extends State<DriverPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'manage_drivers'.tr(),
-                style: const TextStyle(
-                  fontSize: 23,
+                'رانندگان',
+                style: TextStyle(
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: AppColors.textPrimary,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               Text(
-                'مدیریت رانندگان، مدارک و وضعیت فعالیت',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                ),
+                'بررسی مدارک، تأیید و مدیریت وضعیت رانندگان',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
             ],
           ),
         ),
-      ],
-    );
-
-    if (isMobile) {
-      return title;
-    }
-
-    return Row(
-      children: [
-        Expanded(child: title),
-        _buildHeaderInfo(),
+        IconButton(
+          tooltip: 'به‌روزرسانی آمار',
+          onPressed: _refreshStats,
+          icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+        ),
       ],
     );
   }
 
-  Widget _buildHeaderInfo() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.security_rounded,
-            color: Colors.green.shade600,
-            size: 21,
+  // ───────── کارت‌های آمار (کلیک = فیلتر) ─────────
+
+  Widget _buildSummaryCards() {
+    return FutureBuilder<_DriverStats>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        final s = snapshot.data;
+        final loading = snapshot.connectionState == ConnectionState.waiting;
+        final failed = snapshot.hasError;
+
+        String v(int? n) {
+          if (loading) return '…';
+          if (failed || n == null) return '--';
+          return AdminFormat.toFa(n);
+        }
+
+        final cards = [
+          _SummaryData(
+            filter: 'all',
+            title: 'همه رانندگان',
+            value: v(s?.total),
+            icon: Icons.groups_rounded,
+            color: AppColors.info,
           ),
-          const SizedBox(width: 8),
-          Text(
-            'مدیریت امن اطلاعات',
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          _SummaryData(
+            filter: 'pending',
+            title: 'در انتظار تأیید',
+            value: v(s?.pending),
+            icon: Icons.pending_actions_rounded,
+            color: AppColors.warning,
+          ),
+          _SummaryData(
+            filter: 'approved',
+            title: 'تأیید شده',
+            value: v(s?.approved),
+            icon: Icons.verified_rounded,
+            color: AppColors.ok,
+          ),
+          _SummaryData(
+            filter: 'blocked',
+            title: 'مسدود شده',
+            value: v(s?.blocked),
+            icon: Icons.block_rounded,
+            color: AppColors.danger,
+          ),
+        ];
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final columns = width < 620 ? 2 : 4;
+            const gap = 12.0;
+            final cardWidth = (width - gap * (columns - 1)) / columns;
+
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final c in cards)
+                  SizedBox(width: cardWidth, child: _summaryCard(c)),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _summaryCard(_SummaryData d) {
+    final selected = _selectedFilter == d.filter;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => setState(() => _selectedFilter = d.filter),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? d.color : AppColors.border,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.soft(d.color),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(d.icon, color: d.color, size: 22),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    d.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    d.value,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSummaryCards(bool isMobile) {
-    final cards = [
-      _SummaryData(
-        title: 'همه رانندگان',
-        icon: Icons.groups_rounded,
-        color: const Color(0xFF5B5FEF),
+  // ───────── جستجو، فیلتر و جدول ─────────
+
+  Widget _buildControls() {
+    final search = TextField(
+      controller: _searchController,
+      style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+      onChanged: (v) => setState(() => _searchQuery = v.trim()),
+      decoration: InputDecoration(
+        hintText: 'جستجو: نام، شماره، ایمیل یا شناسهٔ راننده',
+        prefixIcon: Icon(Icons.search_rounded, color: AppColors.brand),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'پاک کردن جستجو',
+                icon: const Icon(Icons.clear_rounded),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+        isDense: true,
       ),
-      _SummaryData(
-        title: 'در انتظار تأیید',
-        icon: Icons.pending_actions_rounded,
-        color: Colors.orange,
-      ),
-      _SummaryData(
-        title: 'تأیید شده',
-        icon: Icons.verified_rounded,
-        color: Colors.green,
-      ),
-      _SummaryData(
-        title: 'مسدود شده',
-        icon: Icons.block_rounded,
-        color: Colors.red,
-      ),
-    ];
+    );
+
+    final chips = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _chip('all', 'همه'),
+        _chip('pending', 'در انتظار'),
+        _chip('approved', 'تأیید شده'),
+        _chip('blocked', 'مسدود'),
+      ],
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-
-        if (width < 620) {
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: cards.length,
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 2.35,
-            ),
-            itemBuilder: (context, index) {
-              return _buildSummaryCard(cards[index]);
-            },
+        if (constraints.maxWidth < 760) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [search, const SizedBox(height: 10), chips],
           );
         }
-
         return Row(
           children: [
-            for (int i = 0; i < cards.length; i++) ...[
-              Expanded(
-                child: _buildSummaryCard(cards[i]),
-              ),
-              if (i != cards.length - 1)
-                const SizedBox(width: 14),
-            ],
+            Expanded(child: search),
+            const SizedBox(width: 14),
+            chips,
           ],
         );
       },
     );
   }
 
-  Widget _buildSummaryCard(_SummaryData data) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: data.color.withOpacity(0.11),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              data.icon,
-              color: data.color,
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              data.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _chip(String value, String label) {
+    final selected = _selectedFilter == value;
 
-  Widget _buildFilters(bool isMobile) {
-    final searchField = TextField(
-      controller: _searchController,
-      onChanged: (value) {
-        setState(() {
-          _searchQuery = value.trim();
-        });
-      },
-      decoration: InputDecoration(
-        hintText:
-            'جستجو بر اساس نام، شماره یا شناسه راننده...',
-        hintStyle: TextStyle(
-          color: Colors.grey.shade400,
-          fontSize: 12,
-        ),
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-          color: AppColors.primary,
-        ),
-        suffixIcon: _searchQuery.isNotEmpty
-            ? IconButton(
-                tooltip: 'پاک کردن جستجو',
-                icon: const Icon(Icons.clear_rounded),
-                onPressed: () {
-                  _searchController.clear();
-
-                  setState(() {
-                    _searchQuery = '';
-                  });
-                },
-              )
-            : null,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 15,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color: Colors.grey.shade100,
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => setState(() => _selectedFilter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.brandSoft : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.brand : AppColors.border,
           ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(
-            color: AppColors.primary,
-            width: 1.3,
-          ),
-        ),
-      ),
-    );
-
-    final filterField = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedFilter,
-          isExpanded: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: AppColors.primary,
-          ),
-          onChanged: (value) {
-            if (value == null) return;
-
-            setState(() {
-              _selectedFilter = value;
-            });
-          },
-          items: const [
-            DropdownMenuItem(
-              value: 'all',
-              child: Text('همه رانندگان'),
-            ),
-            DropdownMenuItem(
-              value: 'pending',
-              child: Text('در انتظار تأیید'),
-            ),
-            DropdownMenuItem(
-              value: 'approved',
-              child: Text('تأیید شده'),
-            ),
-            DropdownMenuItem(
-              value: 'blocked',
-              child: Text('مسدود شده'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _cardDecoration(),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                _buildFilterTitle(),
-                const SizedBox(height: 14),
-                searchField,
-                const SizedBox(height: 12),
-                filterField,
-              ],
-            )
-          : Row(
-              children: [
-                _buildFilterTitle(),
-                const SizedBox(width: 22),
-                Expanded(child: searchField),
-                const SizedBox(width: 14),
-                SizedBox(
-                  width: 210,
-                  child: filterField,
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildFilterTitle() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.09),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(
-            Icons.tune_rounded,
-            color: AppColors.primary,
-            size: 19,
-          ),
-        ),
-        const SizedBox(width: 9),
-        const Text(
-          'جستجو و فیلتر',
+        child: Text(
+          label,
           style: TextStyle(
-            color: AppColors.primary,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+            color: selected ? AppColors.brand : AppColors.textSecondary,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.bold : FontWeight.w500,
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildDriversTable() {
-    return Container(
-      width: double.infinity,
+    return AdminCard(
       padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.table_rows_rounded,
-                color: AppColors.primary,
-                size: 22,
-              ),
-              const SizedBox(width: 9),
-              const Expanded(
-                child: Text(
-                  'فهرست رانندگان',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
+          _buildControls(),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = math.max(980.0, constraints.maxWidth);
+
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: width,
+                    child: Column(
+                      children: [
+                        _buildTableHeader(),
+                        const SizedBox(height: 8),
+                        DriversDataList(
+                          key: ValueKey(
+                            '$_searchQuery-$_selectedFilter-${widget.role}',
+                          ),
+                          searchQuery: _searchQuery,
+                          filterStatus: _selectedFilter,
+                          role: widget.role,
+                          permissions: widget.permissions,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                'برای دیدن همه ستون‌ها صفحه را افقی حرکت دهید',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 980,
-                child: Column(
-                  children: [
-                    _buildTableHeader(),
-                    const SizedBox(height: 10),
-                    DriversDataList(
-                      key: ValueKey(
-                        '$_searchQuery-'
-                        '$_selectedFilter-'
-                        '${widget.role}',
-                      ),
-                      searchQuery: _searchQuery,
-                      filterStatus: _selectedFilter,
-                      role: widget.role,
-                      permissions: widget.permissions,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -539,120 +439,57 @@ class _DriverPageState extends State<DriverPage> {
 
   Widget _buildTableHeader() {
     return Container(
-      height: 54,
+      height: 46,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.82),
-          ],
-        ),
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          _headerCell('کد', 0.8),
-          _headerCell('نام راننده', 1.7),
-          _headerCell('شماره تماس', 1.3),
-          _headerCell('وسیلهٔ نقلیه', 1.2),
-          _headerCell('وضعیت', 1.1),
-          _headerCell('مدارک', 1.1),
-          _headerCell('عملیات', 1.8),
+          _headerCell('کد', 8),
+          _headerCell('نام راننده', 17),
+          _headerCell('شماره تماس', 13),
+          _headerCell('وسیلهٔ نقلیه', 16),
+          _headerCell('وضعیت', 12),
+          _headerCell('مدارک', 11),
+          _headerCell('عملیات', 20),
         ],
       ),
     );
   }
 
-  Widget _headerCell(String title, double flex) {
+  // flex دقیقاً مثل ردیف‌های DriversDataList تا ستون‌ها هم‌تراز بمانند
+  Widget _headerCell(String title, int flex) {
     return Expanded(
-      flex: (flex * 10).round(),
+      flex: flex,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
     );
   }
-
-  BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.grey.shade100),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    );
-  }
 }
 
 class _SummaryData {
+  final String filter;
   final String title;
+  final String value;
   final IconData icon;
   final Color color;
 
   const _SummaryData({
+    required this.filter,
     required this.title,
+    required this.value,
     required this.icon,
     required this.color,
   });
-}
-
-class _DriverAccessDeniedPage extends StatelessWidget {
-  const _DriverAccessDeniedPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(28),
-          constraints: const BoxConstraints(maxWidth: 460),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.lock_outline_rounded,
-                size: 56,
-                color: Colors.red,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'دسترسی به بخش رانندگان ندارید.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
