@@ -1,10 +1,31 @@
 import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
+
+const Map<String, String> _kSectionLabels = {
+  'dashboard': 'داشبورد',
+  'drivers': 'رانندگان',
+  'users': 'مسافران',
+  'trips': 'سفرها',
+  'support': 'پشتیبانی',
+  'commission': 'کمیسیون',
+  'fare': 'تنظیمات کرایه',
+  'finance': 'مالی',
+};
+
+const Map<String, String> _kRoleLabels = {
+  'superAdmin': 'مدیر اصلی',
+  'drivers': 'مدیریت رانندگان',
+  'passengers': 'مدیریت مسافران',
+  'operations': 'مدیریت سفرها',
+  'support': 'پشتیبانی',
+  'finance': 'مالی',
+};
 
 class StaffPage extends StatefulWidget {
   static const String id = 'staff';
@@ -34,7 +55,7 @@ class _StaffPageState extends State<StaffPage> {
   CollectionReference<Map<String, dynamic>> get _adminsCollection =>
       _firestore.collection('admins');
 
-  bool get _isSuperAdmin => widget.role == 'superAdmin';
+  bool get _isSuperAdmin => Permissions.isSuperAdmin(widget.role);
 
   @override
   void initState() {
@@ -63,7 +84,7 @@ class _StaffPageState extends State<StaffPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isMobile = constraints.maxWidth < 760;
@@ -88,38 +109,13 @@ class _StaffPageState extends State<StaffPage> {
 
   Widget _buildAccessDenied() {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(28),
-          decoration: _cardDecoration(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.lock_outline_rounded,
-                size: 58,
-                color: Colors.red.shade400,
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'دسترسی ندارید',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'این بخش فقط برای مدیر اصلی قابل دسترسی است.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                ),
-              ),
-            ],
+      backgroundColor: AppColors.bg,
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: AdminStateMessage(
+            icon: Icons.lock_outline_rounded,
+            message: 'این بخش فقط برای مدیر اصلی قابل دسترسی است.',
           ),
         ),
       ),
@@ -127,110 +123,84 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   Widget _buildHeader(bool isMobile) {
-    final title = 'مدیریت کارمندان';
-    final subtitle =
-        'افزودن، ویرایش و کنترل دسترسی کارمندان پنل';
+    const title = 'مدیریت کارمندان';
+    const subtitle = 'افزودن، ویرایش و کنترل دسترسی کارمندان پنل';
 
     final addButton = ElevatedButton.icon(
       onPressed: _showAddStaffDialog,
       icon: const Icon(Icons.person_add_alt_1_rounded),
       label: const Text('افزودن کارمند'),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.primary,
+        backgroundColor: AppColors.accentButton,
+        foregroundColor: AppColors.buttonText,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 13,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(13),
         ),
       ),
     );
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 18 : 24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.78),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.20),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeaderText(title, subtitle),
-                const SizedBox(height: 18),
-                addButton,
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: _buildHeaderText(title, subtitle),
-                ),
-                addButton,
-              ],
-            ),
-    );
-  }
-
-  Widget _buildHeaderText(String title, String subtitle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final text = Row(
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.manage_accounts_rounded,
-                color: Colors.white,
-                size: 27,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.brand,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.manage_accounts_rounded,
+            color: Colors.white,
+            size: 26,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 11),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.82),
-            fontSize: 13,
-            height: 1.5,
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 16 : 20),
+      decoration: _cardDecoration(),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                text,
+                const SizedBox(height: 14),
+                SizedBox(width: double.infinity, child: addButton),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: text),
+                addButton,
+              ],
+            ),
     );
   }
 
@@ -361,7 +331,7 @@ class _StaffPageState extends State<StaffPage> {
         child: DataTable(
           columnSpacing: 28,
           headingRowColor: WidgetStatePropertyAll(
-            AppColors.primary.withOpacity(0.06),
+            AppColors.surfaceAlt,
           ),
           columns: const [
             DataColumn(label: Text('کارمند')),
@@ -418,8 +388,8 @@ class _StaffPageState extends State<StaffPage> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
                           ),
                         ),
                     ],
@@ -434,7 +404,7 @@ class _StaffPageState extends State<StaffPage> {
           SizedBox(
             width: 220,
             child: Text(
-              sections.isEmpty ? 'بدون بخش' : sections.join('، '),
+              _sectionsText(sections),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -491,8 +461,8 @@ class _StaffPageState extends State<StaffPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
                         ),
                       ),
                   ],
@@ -517,14 +487,14 @@ class _StaffPageState extends State<StaffPage> {
           Text(
             'بخش‌های مجاز',
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: AppColors.textSecondary,
               fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            sections.isEmpty ? 'بدون بخش' : sections.join('، '),
+            _sectionsText(sections),
             style: const TextStyle(fontSize: 13),
           ),
         ],
@@ -536,6 +506,11 @@ class _StaffPageState extends State<StaffPage> {
     required QueryDocumentSnapshot<Map<String, dynamic>> document,
     required bool isActive,
   }) {
+    // مدیر اصلی از این صفحه ویرایش، غیرفعال یا حذف نمی‌شود (جلوگیری از خطا)
+    if (Permissions.isSuperAdmin(_readValue(document.data(), ['role']))) {
+      return const SizedBox(width: 48);
+    }
+
     return PopupMenuButton<String>(
       tooltip: 'عملیات',
       onSelected: (value) {
@@ -586,17 +561,17 @@ class _StaffPageState extends State<StaffPage> {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'delete',
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(
               Icons.delete_outline,
-              color: Colors.red,
+              color: AppColors.danger,
             ),
             title: Text(
               'حذف سند کارمند',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: AppColors.danger),
             ),
           ),
         ),
@@ -611,6 +586,7 @@ class _StaffPageState extends State<StaffPage> {
         return _StaffFormDialog(
           title: 'افزودن کارمند',
           submitText: 'افزودن',
+          askUid: true,
         );
       },
     );
@@ -650,65 +626,92 @@ class _StaffPageState extends State<StaffPage> {
     _StaffFormResult result,
   ) async {
     final email = result.email.trim().toLowerCase();
+    final uid = result.uid.trim();
 
-    if (email.isEmpty) {
-      _showSnackBar(
-        'ایمیل کارمند وارد نشده است.',
-        isError: true,
-      );
+    if (email.isEmpty || uid.isEmpty) {
+      _showSnackBar('ایمیل و شناسهٔ کاربر (UID) لازم است.', isError: true);
       return;
     }
 
-    final existing = await _adminsCollection
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get();
+    try {
+      final byId = await _adminsCollection.doc(uid).get();
 
-    if (existing.docs.isNotEmpty) {
-      _showSnackBar(
-        'این ایمیل قبلاً در کارمندان ثبت شده است.',
-        isError: true,
+      if (byId.exists) {
+        _showSnackBar('این UID قبلاً در کارمندان ثبت شده است.', isError: true);
+        return;
+      }
+
+      final existing = await _adminsCollection
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        _showSnackBar('این ایمیل قبلاً در کارمندان ثبت شده است.',
+            isError: true);
+        return;
+      }
+
+      // شناسهٔ سند = UID حساب ورود؛ چون صفحهٔ ورود سند را با uid می‌خواند
+      await _adminsCollection.doc(uid).set({
+        'name': result.name.trim(),
+        'email': email,
+        'role': result.role,
+        'allowSelection': result.sections,
+        'allowedSections': result.sections,
+        'permissions': _buildPermissions(result.sections),
+        'active': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdBy': _auth.currentUser?.uid,
+      });
+
+      await AdminLog.write(
+        action: 'staff_created',
+        targetType: 'admin',
+        targetId: uid,
+        details: 'email=$email, role=${result.role}, '
+            'sections=${result.sections.join(',')}',
       );
-      return;
+
+      if (!mounted) return;
+
+      _showSnackBar('سند کارمند با موفقیت ساخته شد.');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('ساخت کارمند انجام نشد: $e', isError: true);
     }
-
-    final docRef = _adminsCollection.doc();
-
-    await docRef.set({
-      'name': result.name.trim(),
-      'email': email,
-      'role': result.role,
-      'allowSelection': result.sections,
-      'allowedSections': result.sections,
-      'permissions': _buildPermissions(result.sections),
-      'active': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdBy': _auth.currentUser?.uid,
-    });
-
-    if (!mounted) return;
-
-    _showSnackBar('سند کارمند با موفقیت ساخته شد.');
   }
 
   Future<void> _updateStaffDocument(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
     _StaffFormResult result,
   ) async {
-    await document.reference.update({
-      'name': result.name.trim(),
-      'email': result.email.trim().toLowerCase(),
-      'role': result.role,
-      'allowSelection': result.sections,
-      'allowedSections': result.sections,
-      'permissions': _buildPermissions(result.sections),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      await document.reference.update({
+        'name': result.name.trim(),
+        'email': result.email.trim().toLowerCase(),
+        'role': result.role,
+        'allowSelection': result.sections,
+        'allowedSections': result.sections,
+        'permissions': _buildPermissions(result.sections),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-    if (!mounted) return;
+      await AdminLog.write(
+        action: 'staff_updated',
+        targetType: 'admin',
+        targetId: document.id,
+        details: 'role=${result.role}, sections=${result.sections.join(',')}',
+      );
 
-    _showSnackBar('اطلاعات کارمند به‌روزرسانی شد.');
+      if (!mounted) return;
+
+      _showSnackBar('اطلاعات کارمند به‌روزرسانی شد.');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('ذخیره انجام نشد: $e', isError: true);
+    }
   }
 
   Future<void> _toggleStaffStatus(
@@ -723,10 +726,22 @@ class _StaffPageState extends State<StaffPage> {
       return;
     }
 
-    await document.reference.update({
-      'active': !currentStatus,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      await document.reference.update({
+        'active': !currentStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      await AdminLog.write(
+        action: currentStatus ? 'staff_deactivated' : 'staff_activated',
+        targetType: 'admin',
+        targetId: document.id,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('تغییر وضعیت انجام نشد: $e', isError: true);
+      return;
+    }
 
     if (!mounted) return;
 
@@ -756,6 +771,12 @@ class _StaffPageState extends State<StaffPage> {
     try {
       await _auth.sendPasswordResetEmail(email: email);
 
+      await AdminLog.write(
+        action: 'staff_password_reset_sent',
+        targetType: 'admin',
+        targetId: document.id,
+      );
+
       if (!mounted) return;
 
       _showSnackBar(
@@ -784,54 +805,63 @@ class _StaffPageState extends State<StaffPage> {
 
     final name = _staffName(document.data());
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAdminConfirm(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('حذف کارمند'),
-          content: Text(
-            'آیا از حذف سند «$name» مطمئن هستید؟',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('انصراف'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف'),
-            ),
-          ],
-        );
-      },
+      title: 'حذف کارمند',
+      message: 'آیا از حذف سند «$name» مطمئن هستید؟',
+      confirmText: 'حذف',
+      color: AppColors.danger,
     );
 
     if (confirmed != true || !mounted) return;
 
-    await document.reference.delete();
+    try {
+      await document.reference.delete();
+
+      await AdminLog.write(
+        action: 'staff_deleted',
+        targetType: 'admin',
+        targetId: document.id,
+        details: 'name=$name',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('حذف انجام نشد: $e', isError: true);
+      return;
+    }
 
     if (!mounted) return;
 
     _showSnackBar('سند کارمند حذف شد.');
   }
 
+  /// ساختار تو‌در‌تو: permissions.<بخش>.<عمل> — همان چیزی که Firestore Rules
+  /// و رابط کاربری می‌خوانند. (قبلاً کلیدهای نقطه‌دار مسطح نوشته می‌شد که
+  /// هیچ‌جا خوانده نمی‌شد.)
   Map<String, dynamic> _buildPermissions(
     List<String> sections,
   ) {
     final permissions = <String, dynamic>{};
 
     for (final section in sections) {
-      permissions['$section.view'] = true;
-      permissions['$section.create'] = true;
-      permissions['$section.update'] = true;
-      permissions['$section.delete'] = false;
+      if (section == 'dashboard') continue;
+
+      permissions[section] = <String, dynamic>{
+        'view': true,
+        'create': true,
+        'update': true,
+        'delete': false,
+        'viewDocuments': section == 'drivers',
+      };
     }
 
     return permissions;
+  }
+
+  String _sectionsText(List<String> sections) {
+    if (sections.isEmpty) return 'بدون بخش';
+
+    return sections.map((s) => _kSectionLabels[s] ?? s).join('، ');
   }
 
   String _staffName(Map<String, dynamic> data) {
@@ -905,11 +935,11 @@ class _StaffPageState extends State<StaffPage> {
 
     return CircleAvatar(
       radius: 21,
-      backgroundColor: AppColors.primary.withOpacity(0.11),
+      backgroundColor: AppColors.brandSoft,
       child: Text(
         firstLetter,
-        style: const TextStyle(
-          color: AppColors.primary,
+        style: TextStyle(
+          color: AppColors.brand,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -917,69 +947,32 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   Widget _buildRoleChip(String role) {
-    final label = role.isEmpty ? 'بدون نقش' : role;
+    final label = role.isEmpty ? 'بدون نقش' : (_kRoleLabels[role] ?? role);
 
-    return Chip(
-      avatar: const Icon(
-        Icons.badge_outlined,
-        size: 16,
-      ),
-      label: Text(label),
-      visualDensity: VisualDensity.compact,
-      backgroundColor: AppColors.primary.withOpacity(0.08),
-      side: BorderSide.none,
+    return AdminChip(
+      label: label,
+      icon: Icons.badge_outlined,
+      color: AppColors.brand,
     );
   }
 
   Widget _buildStatusChip(bool isActive) {
-    return Chip(
-      avatar: Icon(
-        isActive
-            ? Icons.check_circle_outline
-            : Icons.pause_circle_outline,
-        size: 16,
-        color: isActive ? Colors.green : Colors.orange,
-      ),
-      label: Text(
-        isActive ? 'فعال' : 'غیرفعال',
-      ),
-      visualDensity: VisualDensity.compact,
-      backgroundColor: isActive
-          ? Colors.green.withOpacity(0.10)
-          : Colors.orange.withOpacity(0.10),
-      side: BorderSide.none,
+    return AdminChip(
+      label: isActive ? 'فعال' : 'غیرفعال',
+      icon: isActive
+          ? Icons.check_circle_outline
+          : Icons.pause_circle_outline,
+      color: isActive ? AppColors.ok : AppColors.warning,
     );
   }
 
-  Widget _buildLoadingCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(45),
-      decoration: _cardDecoration(),
-      child: const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
+  Widget _buildLoadingCard() => const AdminLoading();
 
   Widget _buildErrorCard(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: SelectableText(
-        message,
-        style: TextStyle(
-          color: Colors.red.shade800,
-          height: 1.5,
-        ),
-      ),
+    return AdminStateMessage(
+      icon: Icons.error_outline_rounded,
+      message: message,
+      color: AppColors.danger,
     );
   }
 
@@ -997,7 +990,7 @@ class _StaffPageState extends State<StaffPage> {
                 ? Icons.search_off_rounded
                 : Icons.people_outline_rounded,
             size: 52,
-            color: Colors.grey.shade300,
+            color: AppColors.textMuted,
           ),
           const SizedBox(height: 12),
           Text(
@@ -1005,7 +998,7 @@ class _StaffPageState extends State<StaffPage> {
                 ? 'نتیجه‌ای پیدا نشد.'
                 : 'هنوز کارمندی ثبت نشده است.',
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: AppColors.textSecondary,
               fontSize: 14,
             ),
           ),
@@ -1016,18 +1009,9 @@ class _StaffPageState extends State<StaffPage> {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: Colors.grey.shade100,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 
@@ -1035,22 +1019,25 @@ class _StaffPageState extends State<StaffPage> {
     String message, {
     bool isError = false,
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-      ),
+    if (!mounted) return;
+
+    showAdminSnack(
+      context,
+      message,
+      tone: isError ? AdminTone.error : AdminTone.ok,
     );
   }
 }
 
 class _StaffFormResult {
+  final String uid;
   final String name;
   final String email;
   final String role;
   final List<String> sections;
 
   const _StaffFormResult({
+    this.uid = '',
     required this.name,
     required this.email,
     required this.role,
@@ -1061,6 +1048,7 @@ class _StaffFormResult {
 class _StaffFormDialog extends StatefulWidget {
   final String title;
   final String submitText;
+  final bool askUid;
   final String initialName;
   final String initialEmail;
   final String initialRole;
@@ -1069,6 +1057,7 @@ class _StaffFormDialog extends StatefulWidget {
   const _StaffFormDialog({
     required this.title,
     required this.submitText,
+    this.askUid = false,
     this.initialName = '',
     this.initialEmail = '',
     this.initialRole = 'support',
@@ -1082,6 +1071,7 @@ class _StaffFormDialog extends StatefulWidget {
 class _StaffFormDialogState extends State<_StaffFormDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
+  final TextEditingController _uidController = TextEditingController();
 
   late String _selectedRole;
   late Set<String> _selectedSections;
@@ -1145,6 +1135,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _uidController.dispose();
     super.dispose();
   }
 
@@ -1198,6 +1189,13 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
       return;
     }
 
+    final uid = _uidController.text.trim();
+
+    if (widget.askUid && uid.isEmpty) {
+      _showError('شناسهٔ کاربر (UID) را وارد کنید.');
+      return;
+    }
+
     final sections = _selectedSections.toList();
 
     if (sections.isEmpty) {
@@ -1207,6 +1205,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
 
     Navigator.of(context).pop(
       _StaffFormResult(
+        uid: uid,
         name: name,
         email: email,
         role: _selectedRole,
@@ -1216,12 +1215,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
-    );
+    showAdminSnack(context, message, tone: AdminTone.error);
   }
 
   @override
@@ -1244,6 +1238,20 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
                 ),
               ),
               const SizedBox(height: 14),
+              if (widget.askUid) ...[
+                TextField(
+                  controller: _uidController,
+                  decoration: const InputDecoration(
+                    labelText: 'UID حساب (Firebase ← Authentication)',
+                    helperText:
+                        'ابتدا کاربر را در Authentication بسازید و UID آن را اینجا بچسبانید',
+                    helperMaxLines: 2,
+                    prefixIcon: Icon(Icons.fingerprint_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -1277,7 +1285,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
                 child: Text(
                   'بخش‌های مجاز',
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color: AppColors.textSecondary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1296,8 +1304,8 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
         ElevatedButton(
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
+            backgroundColor: AppColors.accentButton,
+            foregroundColor: AppColors.buttonText,
           ),
           child: Text(widget.submitText),
         ),
