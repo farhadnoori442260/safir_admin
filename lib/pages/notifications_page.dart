@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 /// آدرس سرور نتلایف برای ارسال اعلان‌ها
 const String kNotifyFunctionUrl =
@@ -14,7 +16,14 @@ const String kNotifyFunctionUrl =
 class NotificationsPage extends StatefulWidget {
   static const String id = 'webPageNotifications';
 
-  const NotificationsPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const NotificationsPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -34,6 +43,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
           .limit(50)
           .snapshots();
 
+  bool _can(String key) => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'support',
+        key: key,
+      );
+
+  bool get _canView => _can('view');
+  bool get _canSend => _can('create');
+  bool get _canManage => _can('update');
+
   @override
   void dispose() {
     _titleController.dispose();
@@ -43,8 +63,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'شما اجازهٔ مشاهدهٔ بخش اعلان‌ها را ندارید.',
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -84,22 +119,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary,
-                AppColors.primary.withOpacity(0.72),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.20),
-                blurRadius: 14,
-                offset: const Offset(0, 7),
-              ),
-            ],
+            color: AppColors.brand,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: const Icon(
             Icons.notifications_active_outlined,
@@ -108,14 +129,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
         ),
         const SizedBox(width: 14),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'مدیریت اعلان‌ها',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: AppColors.textPrimary,
                   fontSize: 23,
                   fontWeight: FontWeight.bold,
                 ),
@@ -126,7 +147,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.grey,
+                  color: AppColors.textMuted,
                   fontSize: 13,
                 ),
               ),
@@ -149,22 +170,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
             vertical: 10,
           ),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade100),
+            border: Border.all(color: AppColors.border),
           ),
           child: Row(
             children: [
               Icon(
                 Icons.cloud_done_outlined,
-                color: Colors.green.shade600,
+                color: AppColors.ok,
                 size: 21,
               ),
               const SizedBox(width: 8),
               Text(
                 'ارسال از طریق سرور امن نتلایف',
                 style: TextStyle(
-                  color: Colors.grey.shade700,
+                  color: AppColors.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -181,18 +202,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.07),
+        color: AppColors.soft(AppColors.info),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.blue.withOpacity(0.16),
-        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
+          Icon(
             Icons.info_outline_rounded,
-            color: Colors.blue,
+            color: AppColors.info,
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -200,7 +218,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             child: Text(
               'پس از ارسال، سرور نتلایف به‌طور مستقیم اعلان را به گروه انتخاب‌شده در اپلیکیشن منتقل می‌کند.',
               style: TextStyle(
-                color: Colors.blue.shade900,
+                color: AppColors.info,
                 fontSize: 12,
                 height: 1.55,
               ),
@@ -252,7 +270,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: _isSending ? null : _confirmSendNotification,
+              onPressed: (_isSending || !_canSend)
+                  ? null
+                  : _confirmSendNotification,
               icon: _isSending
                   ? const SizedBox(
                       width: 19,
@@ -267,8 +287,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 _isSending ? 'در حال ارسال اعلان...' : 'ارسال اعلان',
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.accentButton,
+                foregroundColor: AppColors.buttonText,
                 elevation: 0,
                 textStyle: const TextStyle(
                   fontSize: 13,
@@ -290,28 +310,28 @@ class _NotificationsPageState extends State<NotificationsPage> {
       value: _targetGroup,
       decoration: InputDecoration(
         labelText: 'گیرندگان پیام',
-        prefixIcon: const Icon(
+        prefixIcon: Icon(
           Icons.groups_outlined,
-          color: AppColors.primary,
+          color: AppColors.brand,
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
           vertical: 14,
         ),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: AppColors.surfaceAlt,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: AppColors.primary,
+          borderSide: BorderSide(
+            color: AppColors.brand,
             width: 1.3,
           ),
         ),
@@ -382,27 +402,27 @@ class _NotificationsPageState extends State<NotificationsPage> {
       hintText: hint,
       prefixIcon: Icon(
         icon,
-        color: AppColors.primary,
+        color: AppColors.brand,
       ),
       alignLabelWithHint: true,
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: AppColors.surfaceAlt,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 15,
         vertical: 15,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: AppColors.border),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
+        borderSide: BorderSide(color: AppColors.border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
+        borderSide: BorderSide(
+          color: AppColors.brand,
           width: 1.3,
         ),
       ),
@@ -415,21 +435,21 @@ class _NotificationsPageState extends State<NotificationsPage> {
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.09),
+            color: AppColors.brand.withOpacity(0.09),
             borderRadius: BorderRadius.circular(11),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.history_rounded,
-            color: AppColors.primary,
+            color: AppColors.brand,
             size: 21,
           ),
         ),
         const SizedBox(width: 10),
-        const Expanded(
+        Expanded(
           child: Text(
             'تاریخچه اعلان‌ها',
             style: TextStyle(
-              color: AppColors.primary,
+              color: AppColors.brand,
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
@@ -447,7 +467,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           return _buildStateMessage(
             icon: Icons.error_outline_rounded,
             message: 'خطا در دریافت تاریخچه: ${snapshot.error}',
-            color: Colors.red.shade600,
+            color: AppColors.danger,
           );
         }
 
@@ -456,11 +476,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(38),
             decoration: _cardDecoration(),
-            child: const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
+            child: const AdminLoading(),
           );
         }
 
@@ -471,7 +487,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           return _buildStateMessage(
             icon: Icons.notifications_none_rounded,
             message: 'هنوز هیچ اعلانی ارسال نشده است.',
-            color: Colors.grey.shade500,
+            color: AppColors.textMuted,
           );
         }
 
@@ -573,7 +589,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color: AppColors.textSecondary,
                     fontSize: 12,
                     height: 1.45,
                   ),
@@ -583,15 +599,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   children: [
                     Icon(
                       Icons.schedule_outlined,
-                      color: Colors.grey.shade500,
+                      color: AppColors.textMuted,
                       size: 15,
                     ),
                     const SizedBox(width: 5),
                     Text(
                       _formatDateTime(createdAt),
                       style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 10,
+                        color: AppColors.textMuted,
+                        fontSize: 12,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -605,7 +621,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       statusInfo.label,
                       style: TextStyle(
                         color: statusInfo.color,
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -615,6 +631,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             ),
           ),
           const SizedBox(width: 8),
+          if (_canManage)
           PopupMenuButton<String>(
             tooltip: 'عملیات اعلان',
             onSelected: (value) {
@@ -633,13 +650,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
             itemBuilder: (context) {
               return [
                 if (status != 'disabled')
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'disable',
                     child: Row(
                       children: [
                         Icon(
                           Icons.notifications_off_outlined,
-                          color: Colors.red,
+                          color: AppColors.danger,
                         ),
                         SizedBox(width: 8),
                         Text('غیرفعال کردن'),
@@ -647,13 +664,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     ),
                   ),
                 if (status == 'failed' || status == 'disabled')
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'retry',
                     child: Row(
                       children: [
                         Icon(
                           Icons.refresh_rounded,
-                          color: Colors.green,
+                          color: AppColors.ok,
                         ),
                         SizedBox(width: 8),
                         Text('ارسال مجدد'),
@@ -676,17 +693,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
     switch (targetGroup) {
       case 'drivers':
         label = 'رانندگان';
-        color = Colors.orange.shade800;
+        color = AppColors.warning;
         icon = Icons.local_taxi_outlined;
         break;
       case 'users':
         label = 'مسافران';
-        color = Colors.blue;
+        color = AppColors.info;
         icon = Icons.person_outline_rounded;
         break;
       default:
         label = 'همه';
-        color = Colors.green;
+        color = AppColors.ok;
         icon = Icons.groups_outlined;
     }
 
@@ -708,7 +725,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             label,
             style: TextStyle(
               color: color,
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -729,52 +746,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAdminConfirm(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text(
-            'تأیید ارسال اعلان',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Text(
-            'آیا مطمئن هستید که می‌خواهید این اعلان را برای '
-            '${_targetGroupLabel(_targetGroup)} ارسال کنید؟',
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text(
-                'انصراف',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('ارسال'),
-            ),
-          ],
-        );
-      },
+      title: 'تأیید ارسال اعلان',
+      message: 'آیا مطمئن هستید که می‌خواهید این اعلان را برای '
+          '${_targetGroupLabel(_targetGroup)} ارسال کنید؟',
+      confirmText: 'ارسال',
     );
 
     if (!mounted) return;
@@ -785,7 +762,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _createNotification() async {
-    if (_isSending) return;
+    if (_isSending || !_canSend) return;
 
     final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
@@ -867,6 +844,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
         'source': 'admin_panel',
       });
 
+      await AdminLog.write(
+        action: isSuccess ? 'notification_sent' : 'notification_failed',
+        targetType: 'notification',
+        targetId: notificationReference.id,
+        details: 'topic=$topic, title=$title',
+      );
+
       await FirebaseFirestore.instance.collection('activities').add({
         'title': 'ثبت و ارسال اعلان عمومی',
         'subtitle':
@@ -918,6 +902,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
     String notificationId,
     String status,
   ) async {
+    if (!_canManage) return;
+
     try {
       await FirebaseFirestore.instance
           .collection('notifications')
@@ -927,6 +913,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
         'isActive': status != 'disabled',
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      await AdminLog.write(
+        action: status == 'disabled'
+            ? 'notification_disabled'
+            : 'notification_retry',
+        targetType: 'notification',
+        targetId: notificationId,
+      );
 
       if (!mounted) return;
 
@@ -962,39 +956,39 @@ class _NotificationsPageState extends State<NotificationsPage> {
   ) {
     switch (rawStatus.trim().toLowerCase()) {
       case 'pending':
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'در صف ارسال',
-          color: Colors.orange,
+          color: AppColors.warning,
           icon: Icons.schedule_rounded,
         );
       case 'sending':
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'در حال ارسال',
-          color: Colors.blue,
+          color: AppColors.info,
           icon: Icons.sync_rounded,
         );
       case 'sent':
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'ارسال شد',
-          color: Colors.green,
+          color: AppColors.ok,
           icon: Icons.check_circle_outline_rounded,
         );
       case 'failed':
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'ارسال ناموفق',
-          color: Colors.red,
+          color: AppColors.danger,
           icon: Icons.error_outline_rounded,
         );
       case 'disabled':
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'غیرفعال',
-          color: Colors.grey,
+          color: AppColors.textMuted,
           icon: Icons.notifications_off_outlined,
         );
       default:
-        return const _NotificationStatusInfo(
+        return _NotificationStatusInfo(
           label: 'نامشخص',
-          color: Colors.grey,
+          color: AppColors.textMuted,
           icon: Icons.info_outline_rounded,
         );
     }
@@ -1071,19 +1065,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void _showSnackBar(String message, Color color) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+    final AdminTone tone = color == Colors.red
+        ? AdminTone.error
+        : (color == Colors.orange ? AdminTone.warning : AdminTone.ok);
+
+    showAdminSnack(context, message, tone: tone);
   }
 
   Widget _buildCardTitle({
@@ -1096,12 +1082,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.09),
+            color: AppColors.brand.withOpacity(0.09),
             borderRadius: BorderRadius.circular(11),
           ),
           child: Icon(
             icon,
-            color: AppColors.primary,
+            color: AppColors.brand,
             size: 21,
           ),
         ),
@@ -1112,8 +1098,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: AppColors.primary,
+                style: TextStyle(
+                  color: AppColors.brand,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1122,8 +1108,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
                 ),
               ),
             ],
@@ -1150,7 +1136,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             message,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.grey.shade700,
+              color: AppColors.textSecondary,
               fontSize: 13,
               height: 1.5,
             ),
@@ -1162,16 +1148,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.grey.shade100),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 18,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 }
