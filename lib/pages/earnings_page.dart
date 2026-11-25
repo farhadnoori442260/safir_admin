@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
 import 'package:safir_admin/utils/admin_format.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 typedef _Doc = QueryDocumentSnapshot<Map<String, dynamic>>;
 
@@ -89,7 +91,14 @@ class _MigrationChoice {
 }
 
 class EarningsPage extends StatefulWidget {
-  const EarningsPage({super.key});
+  final String role;
+  final Map<String, dynamic> permissions;
+
+  const EarningsPage({
+    super.key,
+    this.role = 'superAdmin',
+    this.permissions = const {},
+  });
 
   @override
   State<EarningsPage> createState() => _EarningsPageState();
@@ -121,13 +130,30 @@ class _EarningsPageState extends State<EarningsPage>
 
   bool _isWorking = false;
 
+  bool get _canView => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'commission',
+        key: 'view',
+      );
+
+  bool get _canManage => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'commission',
+        key: 'update',
+      );
+
+  /// دکمه‌های تغییر‌دهنده وقتی غیرفعال‌اند که کاری در جریان است یا مجوز نیست
+  bool get _busy => _isWorking || !_canManage;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _refreshAll();
+      if (mounted && _canView) _refreshAll();
     });
   }
 
@@ -316,44 +342,27 @@ class _EarningsPageState extends State<EarningsPage>
     required String title,
     required String message,
     required String confirmText,
-    Color color = AppColors.primary,
+    Color? color,
   }) async {
-    final bool? result = await showDialog<bool>(
+    final bool? result = await showAdminConfirm(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text(title),
-          content: Text(message, style: const TextStyle(height: 1.6)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('انصراف'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(confirmText),
-            ),
-          ],
-        );
-      },
+      title: title,
+      message: message,
+      confirmText: confirmText,
+      color: color ?? AppColors.accentButton,
     );
 
     return result == true;
   }
 
-  void _snack(String message, {Color color = Colors.green}) {
+  void _snack(String message, {bool error = false}) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
+    showAdminSnack(
+      context,
+      message,
+      tone: error ? AdminTone.error : AdminTone.ok,
+    );
   }
 
   /// تصفیهٔ یک یا چند سفر یک راننده
@@ -362,7 +371,7 @@ class _EarningsPageState extends State<EarningsPage>
     required String driverId,
     required String driverName,
   }) async {
-    if (docs.isEmpty || _isWorking) return;
+    if (docs.isEmpty || _isWorking || !_canManage) return;
 
     final double amount =
         docs.fold<double>(0, (double s, _Doc d) => s + _commissionOf(d));
@@ -412,10 +421,17 @@ class _EarningsPageState extends State<EarningsPage>
         'settled_by_email': admin?.email ?? '',
       });
 
+      await AdminLog.write(
+        action: 'commission_settled',
+        targetType: 'driver',
+        targetId: driverId,
+        details: 'amount=${amount.toStringAsFixed(0)}, trips=${docs.length}',
+      );
+
       _snack('کمیسیون تصفیه شد');
       await _refreshAll();
     } catch (e) {
-      _snack('تصفیه انجام نشد: $e', color: Colors.red);
+      _snack('تصفیه انجام نشد: $e', error: true);
     }
 
     if (mounted) setState(() => _isWorking = false);
@@ -423,14 +439,14 @@ class _EarningsPageState extends State<EarningsPage>
 
   /// برگرداندن یک سفر از «تصفیه‌شده» به «پرداخت‌نشده» (اگر اشتباه ثبت شده)
   Future<void> _revert(_Doc doc) async {
-    if (_isWorking) return;
+    if (_isWorking || !_canManage) return;
 
     final bool ok = await _confirm(
       title: 'بازگردانی تصفیه',
       message:
           'سفر ${_shortId(doc.id)} دوباره «پرداخت‌نشده» می‌شود و در بدهی راننده حساب می‌شود.',
       confirmText: 'بازگردانی',
-      color: Colors.orange.shade800,
+      color: AppColors.warning,
     );
 
     if (!ok || !mounted) return;
@@ -446,10 +462,16 @@ class _EarningsPageState extends State<EarningsPage>
         'commission_reverted_at': FieldValue.serverTimestamp(),
       });
 
+      await AdminLog.write(
+        action: 'commission_settlement_reverted',
+        targetType: 'ride',
+        targetId: doc.id,
+      );
+
       _snack('سفر دوباره پرداخت‌نشده شد');
       await _refreshAll();
     } catch (e) {
-      _snack('بازگردانی انجام نشد: $e', color: Colors.red);
+      _snack('بازگردانی انجام نشد: $e', error: true);
     }
 
     if (mounted) setState(() => _isWorking = false);
@@ -537,7 +559,7 @@ class _EarningsPageState extends State<EarningsPage>
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: AppColors.accentButton,
                     foregroundColor: Colors.white,
                   ),
                   child: const Text('ثبت'),
@@ -554,7 +576,7 @@ class _EarningsPageState extends State<EarningsPage>
   }
 
   Future<void> _migrateLegacy() async {
-    if (_isWorking) return;
+    if (_isWorking || !_canManage) return;
 
     final List<_Doc> legacy =
         _periodDocs.where((_Doc d) => _statusOf(d).isEmpty).toList();
@@ -643,6 +665,14 @@ class _EarningsPageState extends State<EarningsPage>
         await batch.commit();
       }
 
+      await AdminLog.write(
+        action: 'commission_legacy_migrated',
+        targetType: 'rides',
+        targetId: 'legacy',
+        details: 'updated=$updated, skipped=$skipped, '
+            'status=${choice.status}, percent=${choice.percent}',
+      );
+
       _snack(
         '${AdminFormat.toFa(updated)} سفر ثبت شد'
         '${skipped > 0 ? ' (${AdminFormat.toFa(skipped)} سفر بدون کرایه رد شد)' : ''}',
@@ -650,7 +680,7 @@ class _EarningsPageState extends State<EarningsPage>
 
       await _refreshAll();
     } catch (e) {
-      _snack('ثبت انجام نشد: $e', color: Colors.red);
+      _snack('ثبت انجام نشد: $e', error: true);
     }
 
     if (mounted) setState(() => _isWorking = false);
@@ -662,8 +692,23 @@ class _EarningsPageState extends State<EarningsPage>
 
   @override
   Widget build(BuildContext context) {
+    if (!_canView) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: AdminStateMessage(
+              icon: Icons.lock_outline_rounded,
+              message: 'شما اجازهٔ مشاهدهٔ بخش کمیسیون را ندارید.',
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -673,11 +718,23 @@ class _EarningsPageState extends State<EarningsPage>
               children: [
                 _buildHeader(),
                 _buildSummary(isMobile),
+                if (!_canManage)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      'فقط اجازهٔ مشاهده دارید؛ تصفیه و بازگردانی غیرفعال است.',
+                      style: TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 _buildTabBar(),
                 if (_isWorking)
-                  const LinearProgressIndicator(
+                  LinearProgressIndicator(
                     minHeight: 3,
-                    color: AppColors.primary,
+                    color: AppColors.brand,
                   ),
                 Expanded(
                   child: TabBarView(
@@ -708,10 +765,10 @@ class _EarningsPageState extends State<EarningsPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'کمیسیون و بدهی رانندگان',
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: AppColors.textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -719,7 +776,7 @@ class _EarningsPageState extends State<EarningsPage>
                 const SizedBox(height: 4),
                 Text(
                   'مسافر کرایه را نقد به راننده می‌دهد؛ کمیسیون بدهی راننده به شرکت است',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
               ],
             ),
@@ -728,15 +785,15 @@ class _EarningsPageState extends State<EarningsPage>
             tooltip: 'به‌روزرسانی',
             onPressed: loading || _isWorking ? null : _refreshAll,
             icon: loading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: AppColors.primary,
+                      color: AppColors.brand,
                     ),
                   )
-                : const Icon(Icons.refresh_rounded, color: AppColors.primary),
+                : Icon(Icons.refresh_rounded, color: AppColors.brand),
           ),
         ],
       ),
@@ -749,14 +806,14 @@ class _EarningsPageState extends State<EarningsPage>
         title: 'کل بدهی پرداخت‌نشده',
         value: '${AdminFormat.money(_unpaidTotal)} افغانی',
         subtitle: '${AdminFormat.toFa(_unpaid.length)} سفر',
-        color: Colors.orange.shade800,
+        color: AppColors.warning,
         icon: Icons.hourglass_bottom_rounded,
       ),
       _summaryCard(
         title: 'کمیسیون بازهٔ انتخابی',
         value: '${AdminFormat.money(_periodTotal)} افغانی',
         subtitle: '${AdminFormat.toFa(_periodDocs.length)} سفر تکمیل‌شده',
-        color: AppColors.primary,
+        color: AppColors.brand,
         icon: Icons.account_balance_wallet_rounded,
       ),
       _summaryCard(
@@ -765,7 +822,7 @@ class _EarningsPageState extends State<EarningsPage>
         subtitle: _legacyCount > 0
             ? '${AdminFormat.toFa(_legacyCount)} سفر بدون ثبت کمیسیون'
             : 'همهٔ سفرها ثبت شده‌اند',
-        color: Colors.green,
+        color: AppColors.ok,
         icon: Icons.verified_rounded,
       ),
     ];
@@ -819,7 +876,7 @@ class _EarningsPageState extends State<EarningsPage>
               children: [
                 Text(
                   title,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -833,7 +890,7 @@ class _EarningsPageState extends State<EarningsPage>
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -847,20 +904,20 @@ class _EarningsPageState extends State<EarningsPage>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: AppColors.border),
       ),
       child: TabBar(
         controller: _tabController,
         indicatorSize: TabBarIndicatorSize.tab,
         indicator: BoxDecoration(
-          color: AppColors.primary,
+          color: AppColors.accentButton,
           borderRadius: BorderRadius.circular(13),
         ),
         dividerColor: Colors.transparent,
         labelColor: Colors.white,
-        unselectedLabelColor: Colors.grey.shade700,
+        unselectedLabelColor: AppColors.textSecondary,
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
         unselectedLabelStyle:
             const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
@@ -878,11 +935,11 @@ class _EarningsPageState extends State<EarningsPage>
 
   Widget _buildDebtsTab(bool isMobile) {
     if (_unpaidError != null && _unpaid.isEmpty) {
-      return _scrollable(_stateBox(Icons.error_outline_rounded, Colors.red.shade600, _friendly(_unpaidError!), selectable: true));
+      return _scrollable(_stateBox(Icons.error_outline_rounded, AppColors.danger, _friendly(_unpaidError!), selectable: true));
     }
 
     if (_loadingUnpaid && _unpaid.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      return const AdminLoading();
     }
 
     final List<_DriverDebt> debts = _groupDebts();
@@ -891,7 +948,7 @@ class _EarningsPageState extends State<EarningsPage>
       return _scrollable(
         _stateBox(
           Icons.celebration_rounded,
-          Colors.green,
+          AppColors.ok,
           'بدهی پرداخت‌نشده‌ای وجود ندارد',
         ),
       );
@@ -924,10 +981,10 @@ class _EarningsPageState extends State<EarningsPage>
           leading: Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.12),
+              color: AppColors.soft(AppColors.warning),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.local_taxi_rounded, color: Colors.orange.shade800, size: 20),
+            child: Icon(Icons.local_taxi_rounded, color: AppColors.warning, size: 20),
           ),
           title: Text(
             debt.name,
@@ -935,7 +992,7 @@ class _EarningsPageState extends State<EarningsPage>
           ),
           subtitle: Text(
             '${AdminFormat.toFa(debt.docs.length)} سفر پرداخت‌نشده',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -944,7 +1001,7 @@ class _EarningsPageState extends State<EarningsPage>
               Text(
                 '${AdminFormat.money(debt.total)} افغانی',
                 style: TextStyle(
-                  color: Colors.orange.shade800,
+                  color: AppColors.warning,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
@@ -953,22 +1010,21 @@ class _EarningsPageState extends State<EarningsPage>
               SizedBox(
                 height: 28,
                 child: ElevatedButton(
-                  onPressed: _isWorking
-                      ? null
+                  onPressed: _busy ? null
                       : () => _settle(
                             debt.docs,
                             driverId: debt.driverId,
                             driverName: debt.name,
                           ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: AppColors.accentButton,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(9),
                     ),
                   ),
-                  child: const Text('تصفیهٔ کامل', style: TextStyle(fontSize: 11)),
+                  child: const Text('تصفیهٔ کامل', style: TextStyle(fontSize: 12)),
                 ),
               ),
             ],
@@ -980,16 +1036,16 @@ class _EarningsPageState extends State<EarningsPage>
               margin: const EdgeInsets.only(top: 6),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Row(
                 children: [
                   Text(
                     _shortId(doc.id),
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 11,
+                    style: TextStyle(
+                      color: AppColors.brand,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -997,17 +1053,16 @@ class _EarningsPageState extends State<EarningsPage>
                   Expanded(
                     child: Text(
                       date == null ? '--' : AdminFormat.jalaliDateTime(date),
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5),
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                   ),
                   Text(
                     '${AdminFormat.money(_fareOf(doc))} ← ${AdminFormat.money(_commissionOf(doc))}',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(width: 8),
                   TextButton(
-                    onPressed: _isWorking
-                        ? null
+                    onPressed: _busy ? null
                         : () => _settle(
                               <_Doc>[doc],
                               driverId: debt.driverId,
@@ -1017,7 +1072,7 @@ class _EarningsPageState extends State<EarningsPage>
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       minimumSize: const Size(0, 28),
                     ),
-                    child: const Text('تصفیه', style: TextStyle(fontSize: 11)),
+                    child: const Text('تصفیه', style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
@@ -1050,14 +1105,14 @@ class _EarningsPageState extends State<EarningsPage>
       }),
       decoration: InputDecoration(
         hintText: 'جستجو: راننده، مسافر یا کد سفر...',
-        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
+        hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        prefixIcon: Icon(Icons.search_rounded, color: AppColors.brand),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: AppColors.border),
         ),
       ),
     );
@@ -1070,14 +1125,15 @@ class _EarningsPageState extends State<EarningsPage>
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
             value: value,
             isExpanded: true,
-            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.brand),
             items: items,
             onChanged: onChanged,
           ),
@@ -1121,15 +1177,15 @@ class _EarningsPageState extends State<EarningsPage>
         ? SizedBox(
             height: 46,
             child: OutlinedButton.icon(
-              onPressed: _isWorking ? null : _migrateLegacy,
+              onPressed: _busy ? null : _migrateLegacy,
               icon: const Icon(Icons.history_edu_rounded, size: 18),
               label: Text(
                 'ثبت کمیسیون سفرهای قدیمی (${AdminFormat.toFa(_legacyCount)})',
                 style: const TextStyle(fontSize: 12),
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.orange.shade800,
-                side: BorderSide(color: Colors.orange.shade800),
+                foregroundColor: AppColors.warning,
+                side: BorderSide(color: AppColors.warning),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -1174,20 +1230,17 @@ class _EarningsPageState extends State<EarningsPage>
 
   Widget _buildTripsBody(bool isMobile) {
     if (_periodError != null && _periodDocs.isEmpty) {
-      return _stateBox(Icons.error_outline_rounded, Colors.red.shade600, _friendly(_periodError!), selectable: true);
+      return _stateBox(Icons.error_outline_rounded, AppColors.danger, _friendly(_periodError!), selectable: true);
     }
 
     if (_loadingPeriod && _periodDocs.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(40),
-        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-      );
+      return const AdminLoading();
     }
 
     final List<_Doc> filtered = _filteredPeriod;
 
     if (filtered.isEmpty) {
-      return _stateBox(Icons.search_off_rounded, Colors.grey.shade500, 'سفری با این مشخصات پیدا نشد');
+      return _stateBox(Icons.search_off_rounded, AppColors.textMuted, 'سفری با این مشخصات پیدا نشد');
     }
 
     final List<_Doc> visible = filtered.take(_visibleCount).toList();
@@ -1210,8 +1263,8 @@ class _EarningsPageState extends State<EarningsPage>
                 'نمایش بیشتر (${AdminFormat.toFa(filtered.length - visible.length)} سفر دیگر)',
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary),
+                foregroundColor: AppColors.brand,
+                side: BorderSide(color: AppColors.brand),
               ),
             ),
           ),
@@ -1220,7 +1273,7 @@ class _EarningsPageState extends State<EarningsPage>
             padding: const EdgeInsets.only(top: 10),
             child: Text(
               'فقط ۱٬۰۰۰ سفر آخر این بازه بارگذاری شده است. بازهٔ کوتاه‌تری انتخاب کنید.',
-              style: TextStyle(color: Colors.orange.shade800, fontSize: 11.5),
+              style: TextStyle(color: AppColors.warning, fontSize: 12),
             ),
           ),
       ],
@@ -1236,13 +1289,13 @@ class _EarningsPageState extends State<EarningsPage>
     String statusText;
 
     if (status == 'settled') {
-      statusColor = Colors.green;
+      statusColor = AppColors.ok;
       statusText = 'تصفیه‌شده';
     } else if (status == 'unpaid') {
-      statusColor = Colors.orange.shade800;
+      statusColor = AppColors.warning;
       statusText = 'پرداخت‌نشده';
     } else {
-      statusColor = Colors.grey;
+      statusColor = AppColors.textMuted;
       statusText = 'ثبت‌نشده';
     }
 
@@ -1258,7 +1311,7 @@ class _EarningsPageState extends State<EarningsPage>
       ),
       child: Text(
         statusText,
-        style: TextStyle(color: statusColor, fontSize: 10.5, fontWeight: FontWeight.bold),
+        style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );
 
@@ -1268,20 +1321,19 @@ class _EarningsPageState extends State<EarningsPage>
       action = SizedBox(
         height: 30,
         child: ElevatedButton(
-          onPressed: _isWorking
-              ? null
+          onPressed: _busy ? null
               : () => _settle(
                     <_Doc>[doc],
                     driverId: _driverIdOf(doc),
                     driverName: _driverNameOf(doc),
                   ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
+            backgroundColor: AppColors.accentButton,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
           ),
-          child: const Text('تصفیه شد', style: TextStyle(fontSize: 11)),
+          child: const Text('تصفیه شد', style: TextStyle(fontSize: 12)),
         ),
       );
     } else if (status == 'settled') {
@@ -1290,12 +1342,12 @@ class _EarningsPageState extends State<EarningsPage>
             ? 'تصفیه‌شده'
             : 'تصفیه: ${AdminFormat.jalaliDateTime(settledAt)}',
         child: TextButton(
-          onPressed: _isWorking ? null : () => _revert(doc),
+          onPressed: _busy ? null : () => _revert(doc),
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             minimumSize: const Size(0, 30),
           ),
-          child: const Text('بازگردانی', style: TextStyle(fontSize: 11)),
+          child: const Text('بازگردانی', style: TextStyle(fontSize: 12)),
         ),
       );
     }
@@ -1317,9 +1369,9 @@ class _EarningsPageState extends State<EarningsPage>
               children: [
                 Text(
                   _shortId(doc.id),
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 11,
+                  style: TextStyle(
+                    color: AppColors.brand,
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1327,7 +1379,7 @@ class _EarningsPageState extends State<EarningsPage>
                 Expanded(
                   child: Text(
                     dateText,
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                 ),
                 chip,
@@ -1336,7 +1388,7 @@ class _EarningsPageState extends State<EarningsPage>
             const SizedBox(height: 8),
             Text(
               'راننده: ${_driverNameOf(doc)}  |  مسافر: ${_passengerNameOf(doc)}',
-              style: const TextStyle(fontSize: 11.5),
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 6),
             Row(
@@ -1344,7 +1396,7 @@ class _EarningsPageState extends State<EarningsPage>
                 Expanded(
                   child: Text(
                     'کرایه: $fareText\nکمیسیون: $commissionText',
-                    style: const TextStyle(fontSize: 11.5, height: 1.6),
+                    style: const TextStyle(fontSize: 12, height: 1.6),
                   ),
                 ),
                 if (action != null) action,
@@ -1364,39 +1416,39 @@ class _EarningsPageState extends State<EarningsPage>
             width: 60,
             child: Text(
               _shortId(doc.id),
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontSize: 11,
+              style: TextStyle(
+                color: AppColors.brand,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
           Expanded(
             flex: 3,
-            child: Text(dateText, style: TextStyle(color: Colors.grey.shade700, fontSize: 11)),
+            child: Text(dateText, style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           ),
           Expanded(
             flex: 3,
-            child: Text(_driverNameOf(doc), style: const TextStyle(fontSize: 11.5)),
+            child: Text(_driverNameOf(doc), style: const TextStyle(fontSize: 12)),
           ),
           Expanded(
             flex: 3,
-            child: Text(_passengerNameOf(doc), style: const TextStyle(fontSize: 11.5)),
+            child: Text(_passengerNameOf(doc), style: const TextStyle(fontSize: 12)),
           ),
           Expanded(
             flex: 3,
             child: Text(
               fareText,
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
           Expanded(
             flex: 3,
             child: Text(
               commissionText,
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontSize: 11.5,
+              style: TextStyle(
+                color: AppColors.brand,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1419,17 +1471,17 @@ class _EarningsPageState extends State<EarningsPage>
   Widget _buildSettlementsTab() {
     if (_settlementsError != null && _settlements.isEmpty) {
       return _scrollable(
-        _stateBox(Icons.error_outline_rounded, Colors.red.shade600, _friendly(_settlementsError!), selectable: true),
+        _stateBox(Icons.error_outline_rounded, AppColors.danger, _friendly(_settlementsError!), selectable: true),
       );
     }
 
     if (_loadingSettlements && _settlements.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      return const AdminLoading();
     }
 
     if (_settlements.isEmpty) {
       return _scrollable(
-        _stateBox(Icons.receipt_long_outlined, Colors.grey.shade500, 'هنوز تصفیه‌ای ثبت نشده است'),
+        _stateBox(Icons.receipt_long_outlined, AppColors.textMuted, 'هنوز تصفیه‌ای ثبت نشده است'),
       );
     }
 
@@ -1452,10 +1504,10 @@ class _EarningsPageState extends State<EarningsPage>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.11),
+                  color: AppColors.soft(AppColors.ok),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(Icons.verified_rounded, color: Colors.green, size: 21),
+                child: Icon(Icons.verified_rounded, color: AppColors.ok, size: 21),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1470,20 +1522,20 @@ class _EarningsPageState extends State<EarningsPage>
                     Text(
                       '${AdminFormat.toFa(count)} سفر'
                       '${date == null ? '' : '  •  ${AdminFormat.jalaliDateTime(date)}'}',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                     if (admin.isNotEmpty)
                       Text(
                         'ثبت‌کننده: $admin',
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 10.5),
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                       ),
                   ],
                 ),
               ),
               Text(
                 '${AdminFormat.money(amount)} افغانی',
-                style: const TextStyle(
-                  color: Colors.green,
+                style: TextStyle(
+                  color: AppColors.ok,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
@@ -1508,7 +1560,7 @@ class _EarningsPageState extends State<EarningsPage>
     bool selectable = false,
   }) {
     final TextStyle style =
-        TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.6);
+        TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6);
 
     return Container(
       width: double.infinity,
@@ -1546,16 +1598,9 @@ class _EarningsPageState extends State<EarningsPage>
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.grey.shade100),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
     );
   }
 }
