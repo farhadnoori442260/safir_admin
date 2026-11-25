@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'package:safir_admin/constants/app_colors.dart';
+import 'package:safir_admin/utils/permissions.dart';
+import 'package:safir_admin/widgets/admin_ui.dart';
 
 class DriversDataList extends StatefulWidget {
   final String searchQuery;
@@ -21,128 +23,90 @@ class DriversDataList extends StatefulWidget {
   State<DriversDataList> createState() => _DriversDataListState();
 }
 
+enum _Status { pending, approved, blocked }
+
+class _Doc {
+  final String title;
+  final String url;
+  const _Doc(this.title, this.url);
+}
+
+const _phoneKeys = ['phoneNumber', 'phone', 'phone_number', 'mobile'];
+const _photoKeys = [
+  'profilePicture',
+  'profileImage',
+  'profileImageUrl',
+  'photo',
+  'photoUrl',
+  'photo_url',
+  'imageUrl',
+];
+const _vehiclePhotoKeys = [
+  'vehiclePicture',
+  'vehicleImage',
+  'vehicleImageUrl',
+  'carPhotoUrl',
+  'car_photo_url',
+];
+
 class _DriversDataListState extends State<DriversDataList> {
-  final Stream<QuerySnapshot<Map<String, dynamic>>> _driversStream =
-      FirebaseFirestore.instance.collection('drivers').snapshots();
+  // حداکثر ۵۰۰ راننده؛ برای دادهٔ بزرگ‌تر باید جستجوی سمت سرور اضافه شود.
+  final Stream<QuerySnapshot<Map<String, dynamic>>> _stream =
+      FirebaseFirestore.instance.collection('drivers').limit(500).snapshots();
 
   bool _isUpdating = false;
 
-  bool get _isSuperAdmin {
-    return widget.role.trim().toLowerCase() == 'superadmin';
-  }
+  bool _can(String key, [List<String> alt = const []]) => Permissions.can(
+        role: widget.role,
+        permissions: widget.permissions,
+        section: 'drivers',
+        key: key,
+        alternatives: alt,
+      );
 
-  Map<String, dynamic> get _driverPermissions {
-    final rawPermissions = widget.permissions['drivers'];
-
-    if (rawPermissions is Map) {
-      return Map<String, dynamic>.from(rawPermissions);
-    }
-
-    return <String, dynamic>{};
-  }
-
-  bool _hasPermission(
-    String key, {
-    List<String> alternatives = const [],
-  }) {
-    if (_isSuperAdmin) {
-      return true;
-    }
-
-    if (_driverPermissions[key] == true) {
-      return true;
-    }
-
-    for (final alternative in alternatives) {
-      if (_driverPermissions[alternative] == true) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  bool get _canViewDrivers {
-    return _hasPermission('view');
-  }
-
-  bool get _canViewDocuments {
-    return _hasPermission(
-      'viewDocuments',
-      alternatives: const [
-        'documents',
-        'view_documents',
-      ],
-    );
-  }
-
-  bool get _canUpdateDrivers {
-    return _hasPermission(
-      'update',
-      alternatives: const [
-        'edit',
-        'changeStatus',
-      ],
-    );
-  }
-
-  bool get _canBlockDrivers {
-    return _hasPermission(
-      'delete',
-      alternatives: const [
-        'block',
-        'blockDriver',
-      ],
-    );
-  }
+  bool get _canView => _can('view');
+  bool get _canViewDocs =>
+      _can('viewDocuments', const ['documents', 'view_documents']);
+  bool get _canUpdate => _can('update', const ['edit', 'changeStatus']);
+  bool get _canBlock => _can('delete', const ['block', 'blockDriver']);
 
   @override
   Widget build(BuildContext context) {
-    if (!_canViewDrivers) {
-      return _buildPermissionDenied();
+    if (!_canView) {
+      return AdminStateMessage(
+        icon: Icons.lock_outline_rounded,
+        message: 'شما اجازهٔ مشاهدهٔ فهرست رانندگان را ندارید.',
+        color: AppColors.danger,
+      );
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _driversStream,
+      stream: _stream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _buildStateMessage(
+          return AdminStateMessage(
             icon: Icons.error_outline_rounded,
-            message: 'خطا در خواندن رانندگان: ${snapshot.error}',
-            color: Colors.red.shade600,
+            message: 'خطا در خواندن رانندگان:\n${snapshot.error}',
+            color: AppColors.danger,
           );
         }
-
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(42),
-            child: Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
-          );
+          return const AdminLoading();
         }
 
-        final documents = snapshot.data?.docs ?? [];
-
-        if (documents.isEmpty) {
-          return _buildStateMessage(
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const AdminStateMessage(
             icon: Icons.people_outline_rounded,
             message: 'هیچ راننده‌ای ثبت نشده است',
-            color: Colors.grey.shade500,
           );
         }
 
-        final filteredDocuments = documents
-            .where(_matchesFilter)
-            .toList();
-
-        if (filteredDocuments.isEmpty) {
-          return _buildStateMessage(
+        final filtered = docs.where(_matches).toList();
+        if (filtered.isEmpty) {
+          return const AdminStateMessage(
             icon: Icons.search_off_rounded,
             message: 'نتیجه‌ای با این مشخصات یافت نشد',
-            color: Colors.grey.shade500,
           );
         }
 
@@ -150,992 +114,459 @@ class _DriversDataListState extends State<DriversDataList> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 16),
-          itemCount: filteredDocuments.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            return _buildDriverRow(
-              context,
-              filteredDocuments[index],
-            );
-          },
+          itemCount: filtered.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) => _row(context, filtered[i]),
         );
       },
     );
   }
 
-  Widget _buildPermissionDenied() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_outline_rounded,
-            size: 46,
-            color: Colors.red.shade400,
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'شما اجازه مشاهده فهرست رانندگان را ندارید.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.primary,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
+  bool _matches(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data();
+    final q = widget.searchQuery.trim().toLowerCase();
+
+    final okSearch = q.isEmpty ||
+        _name(d).toLowerCase().contains(q) ||
+        _pick(d, _phoneKeys).toLowerCase().contains(q) ||
+        _pick(d, const ['email', 'emailAddress']).toLowerCase().contains(q) ||
+        doc.id.toLowerCase().contains(q);
+
+    final s = _status(d);
+    final okStatus = widget.filterStatus == 'pending'
+        ? s == _Status.pending
+        : widget.filterStatus == 'approved'
+            ? s == _Status.approved
+            : widget.filterStatus == 'blocked'
+                ? s == _Status.blocked
+                : true;
+
+    return okSearch && okStatus;
   }
 
-  bool _matchesFilter(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
-  ) {
-    final data = document.data();
-
-    final name = _driverName(data).toLowerCase();
-
-    final phone = _firstText(
-      data,
-      [
-        'phoneNumber',
-        'phone',
-        'phone_number',
-        'mobile',
-      ],
-    ).toLowerCase();
-
-    final email = _firstText(
-      data,
-      [
-        'email',
-        'emailAddress',
-      ],
-    ).toLowerCase();
-
-    final query = widget.searchQuery.trim().toLowerCase();
-
-    final matchesSearch = query.isEmpty ||
-        name.contains(query) ||
-        phone.contains(query) ||
-        email.contains(query) ||
-        document.id.toLowerCase().contains(query);
-
-    final status = _driverStatus(data);
-
-    bool matchesStatus;
-
-    switch (widget.filterStatus) {
-      case 'pending':
-        matchesStatus = status == _DriverStatus.pending;
-        break;
-      case 'approved':
-        matchesStatus = status == _DriverStatus.approved;
-        break;
-      case 'blocked':
-        matchesStatus = status == _DriverStatus.blocked;
-        break;
-      case 'all':
-      default:
-        matchesStatus = true;
-    }
-
-    return matchesSearch && matchesStatus;
-  }
-
-  Widget _buildDriverRow(
+  // ───────── ردیف ─────────
+  Widget _row(
     BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
-    final data = document.data();
+    final d = doc.data();
+    final v = _vehicle(d);
+    final name = _name(d, fallback: 'راننده ناشناس');
+    final phone = _pick(d, _phoneKeys, fallback: '-');
+    final type = _typeLabel(_pick(v, const ['type', 'vehicleType', 'carType']));
+    final brand = _pick(v, const ['brand', 'model', 'carModel', 'vehicleBrand']);
+    final color = _pick(v, const ['color', 'carColor', 'vehicleColor']);
+    final plate = _plate(v);
 
-    final driverName = _driverName(
-      data,
-      fallback: 'راننده ناشناس',
-    );
-
-    final phone = _firstText(
-      data,
-      [
-        'phoneNumber',
-        'phone',
-        'phone_number',
-        'mobile',
-      ],
-      fallback: '-',
-    );
-
-    final vehicleInfo = _vehicleInfo(data);
-
-    final vehicleType = _vehicleTypeLabel(
-      _firstTextFromMap(
-        vehicleInfo,
-        [
-          'type',
-          'vehicleType',
-          'carType',
-        ],
-      ),
-    );
-
-    final vehicleBrand = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'brand',
-        'model',
-        'carModel',
-        'vehicleBrand',
-      ],
-    );
-
-    final vehicleColor = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'color',
-        'carColor',
-        'vehicleColor',
-      ],
-    );
-
-    final plate = _buildPlateText(vehicleInfo);
-
-    final vehicleDetails = <String>[
-      if (vehicleType.isNotEmpty) vehicleType,
-      if (vehicleBrand.isNotEmpty) vehicleBrand,
-      if (vehicleColor.isNotEmpty) vehicleColor,
+    final details = [
+      if (type.isNotEmpty) type,
+      if (brand.isNotEmpty) brand,
+      if (color.isNotEmpty) color,
       if (plate.isNotEmpty) plate,
     ].join(' • ');
 
-    final status = _driverStatus(data);
+    final status = _status(d);
+    final photo = _pick(d, _photoKeys);
+    final vPhoto = _pick(v, _vehiclePhotoKeys);
 
-    final profileImageUrl = _firstNullableText(
-      data,
-      [
-        'profilePicture',
-        'profileImage',
-        'profileImageUrl',
-        'photo',
-        'photoUrl',
-        'photo_url',
-        'imageUrl',
-      ],
-    );
-
-    final vehicleImageUrl = _firstNullableTextFromMap(
-      vehicleInfo,
-      [
-        'vehiclePicture',
-        'vehicleImage',
-        'vehicleImageUrl',
-        'carPhotoUrl',
-        'car_photo_url',
-      ],
-    );
-
-    return Container(
-      constraints: const BoxConstraints(minHeight: 82),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.025),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+    return AdminCard(
+      minHeight: 82,
+      child: Row(
+        children: [
+          _cell(8, _code(doc.id)),
+          _cell(
+            17,
+            Row(
+              children: [
+                AdminAvatar(url: photo.isEmpty ? null : photo),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+          _cell(
+            13,
+            Row(
+              children: [
+                Icon(Icons.phone_outlined, size: 16, color: AppColors.textMuted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    phone,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _cell(
+            16,
+            Row(
+              children: [
+                AdminAvatar(
+                  url: vPhoto.isEmpty ? null : vPhoto,
+                  icon: _vehicleIcon(type),
+                  size: 42,
+                  round: false,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    details.isEmpty ? 'وسیلهٔ نقلیه' : details,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _cell(
+            12,
+            AdminChip(
+              label: _statusLabel(status),
+              icon: _statusIcon(status),
+              color: _statusColor(status),
+            ),
+          ),
+          _cell(11, _docsButton(context, d, name)),
+          _cell(20, _actions(context, doc, status)),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
-        child: Row(
-          children: [
-            _dataCell(
-              flex: 8,
-              child: _buildDriverCode(document.id),
-            ),
-            _dataCell(
-              flex: 17,
-              child: _buildDriverIdentity(
-                name: driverName,
-                photoUrl: profileImageUrl,
-              ),
-            ),
-            _dataCell(
-              flex: 13,
-              child: _buildSimpleText(
-                phone,
-                icon: Icons.phone_outlined,
-              ),
-            ),
-            _dataCell(
-              flex: 16,
-              child: _buildVehicleCell(
-                type: vehicleType,
-                details: vehicleDetails,
-                vehicleImageUrl: vehicleImageUrl,
-              ),
-            ),
-            _dataCell(
-              flex: 12,
-              child: _buildStatusChip(status),
-            ),
-            _dataCell(
-              flex: 11,
-              child: _buildDocumentsButton(
-                context: context,
-                data: data,
-                driverName: driverName,
-              ),
-            ),
-            _dataCell(
-              flex: 20,
-              child: _buildActions(
-                context: context,
-                document: document,
-                status: status,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildDocumentsButton({
-    required BuildContext context,
-    required Map<String, dynamic> data,
-    required String driverName,
-  }) {
-    if (!_canViewDocuments) {
-      return Tooltip(
-        message: 'مجوز مشاهده مدارک را ندارید',
-        child: Icon(
-          Icons.lock_outline_rounded,
-          color: Colors.grey.shade400,
-          size: 20,
+  Widget _cell(int flex, Widget child) => Expanded(
+        flex: flex,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          child: child,
         ),
       );
-    }
 
-    return IconButton(
-      tooltip: 'مشاهده مدارک',
-      icon: const Icon(
-        Icons.folder_shared_outlined,
-        color: AppColors.primary,
-      ),
-      onPressed: () {
-        _showDocumentsDialog(
-          context: context,
-          data: data,
-          driverName: driverName,
-        );
-      },
-    );
-  }
-
-  Widget _dataCell({
-    required int flex,
-    required Widget child,
-  }) {
-    return Expanded(
-      flex: flex,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        child: child,
-      ),
-    );
-  }
-
-  Widget _buildDriverCode(String id) {
-    final shortId = id.length > 6 ? id.substring(0, 6) : id;
-
+  Widget _code(String id) {
+    final short = id.length > 6 ? id.substring(0, 6) : id;
     return Tooltip(
       message: id,
       child: Text(
-        shortId,
+        short,
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+        style: TextStyle(
+          color: AppColors.brand,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
 
-  Widget _buildDriverIdentity({
-    required String name,
-    required String? photoUrl,
-  }) {
-    return Row(
-      children: [
-        _buildAvatar(photoUrl),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAvatar(String? photoUrl) {
-    final hasPhoto = photoUrl != null && photoUrl.trim().isNotEmpty;
-
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.09),
-        shape: BoxShape.circle,
-      ),
-      child: ClipOval(
-        child: hasPhoto
-            ? Image.network(
-                photoUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.person_outline_rounded,
-                    color: AppColors.primary,
-                    size: 21,
-                  );
-                },
-              )
-            : const Icon(
-                Icons.person_outline_rounded,
-                color: AppColors.primary,
-                size: 21,
-              ),
-      ),
-    );
-  }
-
-  Widget _buildVehicleCell({
-    required String type,
-    required String details,
-    required String? vehicleImageUrl,
-  }) {
-    return Row(
-      children: [
-        _buildVehicleAvatar(vehicleImageUrl, type),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            details.isEmpty ? 'وسیلهٔ نقلیه' : details,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 10.5,
-              height: 1.35,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVehicleAvatar(
-    String? imageUrl,
-    String vehicleType,
+  Widget _docsButton(
+    BuildContext context,
+    Map<String, dynamic> data,
+    String name,
   ) {
-    final hasImage = imageUrl != null && imageUrl.trim().isNotEmpty;
-
-    if (hasImage) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Image.network(
-          imageUrl!,
-          width: 42,
-          height: 42,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _vehicleIconBox(vehicleType);
-          },
-        ),
+    if (!_canViewDocs) {
+      return Tooltip(
+        message: 'مجوز مشاهدهٔ مدارک را ندارید',
+        child: Icon(Icons.lock_outline_rounded,
+            color: AppColors.textMuted, size: 20),
       );
     }
-
-    return _vehicleIconBox(vehicleType);
-  }
-
-  Widget _vehicleIconBox(String vehicleType) {
-    IconData icon;
-
-    switch (vehicleType) {
-      case 'موترسایکل':
-        icon = Icons.two_wheeler_rounded;
-        break;
-      case 'باربری':
-        icon = Icons.local_shipping_rounded;
-        break;
-      default:
-        icon = Icons.local_taxi_rounded;
-    }
-
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.09),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Icon(
-        icon,
-        color: AppColors.primary,
-        size: 23,
-      ),
+    return IconButton(
+      tooltip: 'مشاهدهٔ مدارک',
+      icon: Icon(Icons.folder_shared_outlined, color: AppColors.brand),
+      onPressed: () => _showDocuments(context, data, name),
     );
   }
 
-  Widget _buildSimpleText(
-    String value, {
-    required IconData icon,
-  }) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: Colors.grey.shade500,
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _actions(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    _Status status,
+  ) {
+    final approved = status == _Status.approved;
+    final blocked = status == _Status.blocked;
 
-  Widget _buildStatusChip(_DriverStatus status) {
-    final color = _statusColor(status);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 7,
-      ),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            _statusIcon(status),
-            size: 14,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              _statusLabel(status),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActions({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> document,
-    required _DriverStatus status,
-  }) {
-    final isApproved = status == _DriverStatus.approved;
-    final isBlocked = status == _DriverStatus.blocked;
-
-    final canUpdate = _canUpdateDrivers;
-    final canBlock = _canBlockDrivers;
-
-    if (!canUpdate && !canBlock) {
+    if (!_canUpdate && !_canBlock) {
       return Tooltip(
         message: 'مجوز انجام عملیات را ندارید',
-        child: Icon(
-          Icons.lock_outline_rounded,
-          color: Colors.grey.shade400,
-          size: 20,
-        ),
+        child: Icon(Icons.lock_outline_rounded,
+            color: AppColors.textMuted, size: 20),
       );
     }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (canUpdate)
+        if (_canUpdate)
           Flexible(
             child: ElevatedButton.icon(
-              onPressed: _isUpdating
-                  ? null
-                  : () {
-                      _confirmApprovalChange(
-                        context: context,
-                        document: document,
-                        currentlyApproved: isApproved,
-                      );
-                    },
+              onPressed:
+                  _isUpdating ? null : () => _confirmApproval(context, doc, approved),
               icon: Icon(
-                isApproved
+                approved
                     ? Icons.remove_moderator_outlined
                     : Icons.verified_outlined,
                 size: 15,
               ),
               label: Text(
-                isApproved ? 'لغو تأیید' : 'تأیید',
+                approved ? 'لغو تأیید' : 'تأیید',
                 overflow: TextOverflow.ellipsis,
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                    isApproved ? Colors.orange : Colors.green,
-                foregroundColor: Colors.white,
+                    approved ? AppColors.warning : AppColors.accentButton,
+                foregroundColor: AppColors.isDark && approved
+                    ? Colors.black
+                    : AppColors.buttonText,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 9,
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                textStyle:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
           ),
-        if (canUpdate && canBlock)
-          const SizedBox(width: 6),
-        if (canBlock)
-          Tooltip(
-            message: isBlocked
-                ? 'خروج از مسدودی'
-                : 'مسدود کردن راننده',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: _isUpdating
-                  ? null
-                  : () {
-                      _confirmBlockChange(
-                        context: context,
-                        document: document,
-                        currentlyBlocked: isBlocked,
-                      );
-                    },
-              child: Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: isBlocked
-                      ? Colors.green.withOpacity(0.10)
-                      : Colors.red.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isBlocked
-                      ? Icons.lock_open_rounded
-                      : Icons.block_rounded,
-                  color: isBlocked ? Colors.green : Colors.red,
-                  size: 18,
-                ),
-              ),
-            ),
+        if (_canUpdate && _canBlock) const SizedBox(width: 6),
+        if (_canBlock)
+          AdminIconAction(
+            icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+            color: blocked ? AppColors.ok : AppColors.danger,
+            tooltip: blocked ? 'خروج از مسدودی' : 'مسدود کردن راننده',
+            onTap: _isUpdating ? null : () => _confirmBlock(context, doc, blocked),
           ),
       ],
     );
   }
 
-  Future<void> _confirmApprovalChange({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> document,
-    required bool currentlyApproved,
-  }) async {
-    if (!_canUpdateDrivers) {
-      _showPermissionMessage(
-        'مجوز تغییر وضعیت راننده را ندارید.',
-      );
-      return;
-    }
+  // ───────── تأیید / مسدودی ─────────
+  Future<void> _confirmApproval(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    bool approved,
+  ) async {
+    if (!_canUpdate) return;
+    final action = approved ? 'لغو تأیید' : 'تأیید';
 
-    final action = currentlyApproved ? 'لغو تأیید' : 'تأیید';
-
-    final confirmed = await _showConfirmDialog(
+    final ok = await showAdminConfirm(
       context: context,
       title: '$action مدارک',
-      message: currentlyApproved
+      message: approved
           ? 'آیا می‌خواهید تأیید مدارک این راننده لغو شود؟'
           : 'آیا مدارک این راننده را تأیید می‌کنید؟',
       confirmText: action,
-      color: currentlyApproved ? Colors.orange : Colors.green,
+      color: approved ? AppColors.warning : AppColors.accentButton,
     );
-
-    if (confirmed == true) {
-      await _updateDriverApproval(
-        driverId: document.id,
-        currentApproved: currentlyApproved,
-      );
-    }
+    if (ok == true) await _setApproval(doc.id, !approved);
   }
 
-  Future<void> _confirmBlockChange({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> document,
-    required bool currentlyBlocked,
-  }) async {
-    if (!_canBlockDrivers) {
-      _showPermissionMessage(
-        'مجوز مسدودکردن راننده را ندارید.',
-      );
-      return;
-    }
+  Future<void> _confirmBlock(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    bool blocked,
+  ) async {
+    if (!_canBlock) return;
+    final action = blocked ? 'خروج از مسدودی' : 'مسدود کردن';
 
-    final action = currentlyBlocked
-        ? 'خروج از مسدودی'
-        : 'مسدود کردن';
-
-    final confirmed = await _showConfirmDialog(
+    final ok = await showAdminConfirm(
       context: context,
       title: action,
-      message: currentlyBlocked
+      message: blocked
           ? 'آیا می‌خواهید این راننده از حالت مسدود خارج شود؟'
           : 'آیا مطمئن هستید که می‌خواهید این راننده را مسدود کنید؟',
       confirmText: action,
-      color: currentlyBlocked ? Colors.green : Colors.red,
+      color: blocked ? AppColors.accentButton : AppColors.danger,
     );
-
-    if (confirmed == true) {
-      await _updateDriverBlockStatus(
-        driverId: document.id,
-        currentlyBlocked: currentlyBlocked,
-      );
-    }
+    if (ok == true) await _setBlocked(doc.id, !blocked);
   }
 
-  Future<bool?> _showConfirmDialog({
-    required BuildContext context,
-    required String title,
-    required String message,
-    required String confirmText,
-    required Color color,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Text(
-            message,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text(
-                'انصراف',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                elevation: 0,
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: Text(confirmText),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _updateDriverApproval({
-    required String driverId,
-    required bool currentApproved,
-  }) async {
-    if (!_canUpdateDrivers || _isUpdating) {
-      if (!_canUpdateDrivers) {
-        _showPermissionMessage(
-          'مجوز تغییر وضعیت راننده را ندارید.',
-        );
-      }
-      return;
-    }
-
-    final newApproved = !currentApproved;
-
-    setState(() {
-      _isUpdating = true;
-    });
+  Future<void> _setApproval(String id, bool approve) async {
+    if (!_canUpdate || _isUpdating) return;
+    setState(() => _isUpdating = true);
 
     try {
-      await FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(driverId)
-          .update({
-        'isApproved': newApproved,
-        'status': newApproved ? 'approved' : 'pending',
-        'newDriverStatus': newApproved ? 'approved' : 'pending',
+      await FirebaseFirestore.instance.collection('drivers').doc(id).update({
+        'isApproved': approve,
+        'status': approve ? 'approved' : 'pending',
+        'newDriverStatus': approve ? 'approved' : 'pending',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      if (!mounted) return;
-
-      _showSnackBar(
-        newApproved
-            ? 'مدارک راننده با موفقیت تأیید شد'
-            : 'تأیید مدارک راننده لغو شد',
-        Colors.green,
+      AdminLog.write(
+        action: approve ? 'driver_approved' : 'driver_approval_revoked',
+        targetType: 'driver',
+        targetId: id,
       );
-    } on FirebaseException catch (error) {
-      if (!mounted) return;
 
-      _showSnackBar(
-        'خطا در به‌روزرسانی راننده: ${error.message ?? error.code}',
-        Colors.red,
-      );
-    } catch (error) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'خطا در به‌روزرسانی راننده: $error',
-        Colors.red,
+      showAdminSnack(
+        context,
+        approve ? 'مدارک راننده تأیید شد' : 'تأیید مدارک راننده لغو شد',
+        tone: approve ? AdminTone.ok : AdminTone.warning,
       );
-    } finally {
+    } on FirebaseException catch (e) {
       if (mounted) {
-        setState(() {
-          _isUpdating = false;
-        });
+        showAdminSnack(context, 'خطا در به‌روزرسانی راننده: ${e.message ?? e.code}',
+            tone: AdminTone.error);
       }
+    } catch (e) {
+      if (mounted) {
+        showAdminSnack(context, 'خطا در به‌روزرسانی راننده: $e',
+            tone: AdminTone.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
-  Future<void> _updateDriverBlockStatus({
-    required String driverId,
-    required bool currentlyBlocked,
-  }) async {
-    if (!_canBlockDrivers || _isUpdating) {
-      if (!_canBlockDrivers) {
-        _showPermissionMessage(
-          'مجوز مسدودکردن راننده را ندارید.',
-        );
-      }
-      return;
-    }
-
-    final newBlocked = !currentlyBlocked;
-
-    setState(() {
-      _isUpdating = true;
-    });
+  Future<void> _setBlocked(String id, bool block) async {
+    if (!_canBlock || _isUpdating) return;
+    setState(() => _isUpdating = true);
 
     try {
-      final reference = FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(driverId);
+      final ref = FirebaseFirestore.instance.collection('drivers').doc(id);
+      final current = (await ref.get()).data() ?? {};
+      final approved = _isApproved(current);
 
-      final currentDocument = await reference.get();
-      final currentData = currentDocument.data() ?? {};
-      final currentApproved = _isApproved(currentData);
-
-      await reference.update({
-        'isBlocked': newBlocked,
-        'blockStatus': newBlocked ? 'yes' : 'no',
-        'status': newBlocked
-            ? 'blocked'
-            : (currentApproved ? 'approved' : 'pending'),
+      await ref.update({
+        'isBlocked': block,
+        'blockStatus': block ? 'yes' : 'no',
+        'status': block ? 'blocked' : (approved ? 'approved' : 'pending'),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      if (!mounted) return;
-
-      _showSnackBar(
-        newBlocked
-            ? 'راننده با موفقیت مسدود شد'
-            : 'راننده از حالت مسدود خارج شد',
-        newBlocked ? Colors.red : Colors.green,
+      AdminLog.write(
+        action: block ? 'driver_blocked' : 'driver_unblocked',
+        targetType: 'driver',
+        targetId: id,
       );
-    } on FirebaseException catch (error) {
-      if (!mounted) return;
 
-      _showSnackBar(
-        'خطا در تغییر وضعیت مسدودی: '
-        '${error.message ?? error.code}',
-        Colors.red,
-      );
-    } catch (error) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'خطا در تغییر وضعیت مسدودی: $error',
-        Colors.red,
+      showAdminSnack(
+        context,
+        block ? 'راننده مسدود شد' : 'راننده از حالت مسدود خارج شد',
+        tone: block ? AdminTone.warning : AdminTone.ok,
       );
-    } finally {
+    } on FirebaseException catch (e) {
       if (mounted) {
-        setState(() {
-          _isUpdating = false;
-        });
+        showAdminSnack(
+            context, 'خطا در تغییر وضعیت مسدودی: ${e.message ?? e.code}',
+            tone: AdminTone.error);
       }
+    } catch (e) {
+      if (mounted) {
+        showAdminSnack(context, 'خطا در تغییر وضعیت مسدودی: $e',
+            tone: AdminTone.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
-  void _showDocumentsDialog({
-    required BuildContext context,
-    required Map<String, dynamic> data,
-    required String driverName,
-  }) {
-    if (!_canViewDocuments) {
-      _showPermissionMessage(
-        'مجوز مشاهده مدارک را ندارید.',
-      );
-      return;
-    }
+  // ───────── مدارک ─────────
+  void _showDocuments(
+    BuildContext context,
+    Map<String, dynamic> data,
+    String name,
+  ) {
+    if (!_canViewDocs) return;
 
-    final documents = _collectDocuments(data);
-
-    if (documents.isEmpty) {
-      _showSnackBar(
-        'هیچ تصویری برای مدارک این راننده ثبت نشده است.',
-        Colors.orange,
-      );
+    final docs = _collectDocs(data);
+    if (docs.isEmpty) {
+      showAdminSnack(context, 'هیچ تصویری برای مدارک این راننده ثبت نشده است.',
+          tone: AdminTone.warning);
       return;
     }
 
     showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 620,
-              maxHeight: 720,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.folder_shared_rounded,
-                          color: AppColors.primary,
-                        ),
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620, maxHeight: 720),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.brandSoft,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'مدارک راننده: $driverName',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'بستن',
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: documents.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 14),
-                      itemBuilder: (context, index) {
-                        final item = documents[index];
-
-                        return _buildDocumentCard(
-                          title: item.title,
-                          url: item.url,
-                        );
-                      },
+                      child: Icon(Icons.folder_shared_rounded,
+                          color: AppColors.brand),
                     ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'مدارک راننده: $name',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'بستن',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: Icon(Icons.close_rounded,
+                          color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: docs.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 14),
+                    itemBuilder: (_, i) => _docCard(docs[i]),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildDocumentCard({
-    required String title,
-    required String url,
-  }) {
+  Widget _docCard(_Doc doc) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1143,57 +574,49 @@ class _DriversDataListState extends State<DriversDataList> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Text(
-              title,
-              style: const TextStyle(
+              doc.title,
+              style: TextStyle(
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
-                fontSize: 13,
+                fontSize: 14,
               ),
             ),
           ),
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              bottom: Radius.circular(16),
-            ),
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(14)),
             child: Image.network(
-              url,
+              doc.url,
               width: double.infinity,
               height: 245,
               fit: BoxFit.cover,
               loadingBuilder: (context, child, progress) {
                 if (progress == null) return child;
-
-                return const SizedBox(
+                return SizedBox(
                   height: 245,
                   child: Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primary,
-                    ),
+                    child: CircularProgressIndicator(color: AppColors.brand),
                   ),
                 );
               },
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 245,
-                  color: Colors.grey.shade200,
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.broken_image_outlined,
-                          size: 42,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'تصویر قابل نمایش نیست',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
+              errorBuilder: (_, __, ___) => Container(
+                height: 245,
+                color: AppColors.surfaceAlt,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image_outlined,
+                          size: 42, color: AppColors.textMuted),
+                      const SizedBox(height: 8),
+                      Text(
+                        'تصویر قابل نمایش نیست',
+                        style: TextStyle(color: AppColors.textMuted),
+                      ),
+                    ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ),
         ],
@@ -1201,212 +624,120 @@ class _DriversDataListState extends State<DriversDataList> {
     );
   }
 
-  List<_DriverDocument> _collectDocuments(
-    Map<String, dynamic> data,
-  ) {
-    final documents = <_DriverDocument>[];
-    final vehicleInfo = _vehicleInfo(data);
+  List<_Doc> _collectDocs(Map<String, dynamic> d) {
+    final v = _vehicle(d);
+    final out = <_Doc>[];
 
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'profilePicture',
-          'profileImage',
-          'profileImageUrl',
-          'photo',
-          'photoUrl',
-          'photo_url',
-          'imageUrl',
-        ],
-      ),
-      'عکس پروفایل راننده',
-    );
+    void add(String title, String url) {
+      if (url.isNotEmpty) out.add(_Doc(title, url));
+    }
 
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'cnicFrontImage',
-          'cnicFrontImageUrl',
-          'idCardFrontImage',
-          'identityCardFrontImage',
-          'idCardUrl',
-        ],
-      ),
+    add('عکس پروفایل راننده', _pick(d, _photoKeys));
+    add(
       'روی کارت هویت',
+      _pick(d, const [
+        'cnicFrontImage',
+        'cnicFrontImageUrl',
+        'idCardFrontImage',
+        'identityCardFrontImage',
+        'idCardUrl',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'cnicBackImage',
-          'cnicBackImageUrl',
-          'idCardBackImage',
-          'identityCardBackImage',
-        ],
-      ),
+    add(
       'پشت کارت هویت',
+      _pick(d, const [
+        'cnicBackImage',
+        'cnicBackImageUrl',
+        'idCardBackImage',
+        'identityCardBackImage',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'driverFaceWithCnic',
-          'driverFaceWithCnicImage',
-          'cnicWithSelfieImage',
-          'selfieWithCnic',
-        ],
-      ),
+    add(
       'عکس سلفی با کارت هویت',
+      _pick(d, const [
+        'driverFaceWithCnic',
+        'driverFaceWithCnicImage',
+        'cnicWithSelfieImage',
+        'selfieWithCnic',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'drivingLicenseFrontImage',
-          'drivingLicenseFrontImageUrl',
-          'licenseFrontImage',
-          'drivingLicenseUrl',
-          'licenseUrl',
-        ],
-      ),
+    add(
       'روی گواهینامه',
+      _pick(d, const [
+        'drivingLicenseFrontImage',
+        'drivingLicenseFrontImageUrl',
+        'licenseFrontImage',
+        'drivingLicenseUrl',
+        'licenseUrl',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableText(
-        data,
-        [
-          'drivingLicenseBackImage',
-          'drivingLicenseBackImageUrl',
-          'licenseBackImage',
-        ],
-      ),
+    add(
       'پشت گواهینامه',
+      _pick(d, const [
+        'drivingLicenseBackImage',
+        'drivingLicenseBackImageUrl',
+        'licenseBackImage',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'vehiclePicture',
-          'vehicleImage',
-          'vehicleImageUrl',
-          'carPhotoUrl',
-          'car_photo_url',
-        ],
-      ),
-      'عکس وسیلهٔ نقلیه',
-    );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'registrationCertificateFrontImage',
-          'vehicleRegistrationFrontImage',
-          'registrationFrontImage',
-          'vehicleRegistrationFrontImageUrl',
-        ],
-      ),
+    add('عکس وسیلهٔ نقلیه', _pick(v, _vehiclePhotoKeys));
+    add(
       'روی سند وسیلهٔ نقلیه',
+      _pick(v, const [
+        'registrationCertificateFrontImage',
+        'vehicleRegistrationFrontImage',
+        'registrationFrontImage',
+        'vehicleRegistrationFrontImageUrl',
+      ]),
     );
-
-    _addDocument(
-      documents,
-      _firstNullableTextFromMap(
-        vehicleInfo,
-        [
-          'registrationCertificateBackImage',
-          'vehicleRegistrationBackImage',
-          'registrationBackImage',
-          'vehicleRegistrationBackImageUrl',
-        ],
-      ),
+    add(
       'پشت سند وسیلهٔ نقلیه',
+      _pick(v, const [
+        'registrationCertificateBackImage',
+        'vehicleRegistrationBackImage',
+        'registrationBackImage',
+        'vehicleRegistrationBackImageUrl',
+      ]),
     );
 
-    final uniqueUrls = <String>{};
-
-    return documents.where((document) {
-      return uniqueUrls.add(document.url);
-    }).toList();
+    final seen = <String>{};
+    return out.where((e) => seen.add(e.url)).toList();
   }
 
-  void _addDocument(
-    List<_DriverDocument> documents,
-    String? url,
-    String title,
-  ) {
-    if (url == null || url.trim().isEmpty) {
-      return;
-    }
-
-    documents.add(
-      _DriverDocument(
-        title: title,
-        url: url.trim(),
-      ),
-    );
+  // ───────── خواندن فیلدها ─────────
+  Map<String, dynamic> _vehicle(Map<String, dynamic> d) {
+    final v = d['vehicleInfo'];
+    return v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
   }
 
-  Map<String, dynamic> _vehicleInfo(
-    Map<String, dynamic> data,
-  ) {
-    final value = data['vehicleInfo'];
-
-    if (value is Map) {
-      return Map<String, dynamic>.from(value);
-    }
-
-    return <String, dynamic>{};
-  }
-
-  String _driverName(
-    Map<String, dynamic> data, {
+  String _pick(
+    Map<String, dynamic> d,
+    List<String> keys, {
     String fallback = '',
   }) {
-    final firstName = _firstText(
-      data,
-      [
-        'firstName',
-        'firstname',
-        'first_name',
-      ],
-    );
-
-    final secondName = _firstText(
-      data,
-      [
-        'secondName',
-        'lastName',
-        'lastname',
-        'last_name',
-        'surname',
-      ],
-    );
-
-    final combined = '$firstName $secondName'.trim();
-
-    if (combined.isNotEmpty) {
-      return combined;
+    for (final k in keys) {
+      final v = d[k];
+      if (v == null) continue;
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+      if (v is num || v is bool) return v.toString();
     }
+    return fallback;
+  }
 
-    return _firstText(
-      data,
-      [
+  String _name(Map<String, dynamic> d, {String fallback = ''}) {
+    final first = _pick(d, const ['firstName', 'firstname', 'first_name']);
+    final last = _pick(d, const [
+      'secondName',
+      'lastName',
+      'lastname',
+      'last_name',
+      'surname',
+    ]);
+    final combined = '$first $last'.trim();
+    if (combined.isNotEmpty) return combined;
+
+    return _pick(
+      d,
+      const [
         'name',
         'driver_name',
         'driverName',
@@ -1418,363 +749,111 @@ class _DriversDataListState extends State<DriversDataList> {
     );
   }
 
-  String _buildPlateText(
-    Map<String, dynamic> vehicleInfo,
-  ) {
-    final province = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'plateProvince',
-        'province',
-      ],
-    );
+  String _plate(Map<String, dynamic> v) {
+    final province = _pick(v, const ['plateProvince', 'province']);
+    final category = _pick(v, const ['plateCategory', 'category']);
+    final number = _pick(v, const [
+      'registrationPlateNumber',
+      'plateNumber',
+      'carNumber',
+      'plate',
+    ]);
 
-    final category = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'plateCategory',
-        'category',
-      ],
-    );
-
-    final plateType = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'plateType',
-        'type',
-      ],
-    );
-
-    final number = _firstTextFromMap(
-      vehicleInfo,
-      [
-        'registrationPlateNumber',
-        'plateNumber',
-        'carNumber',
-        'plate',
-      ],
-    );
-
-    final parts = <String>[
+    final parts = [
       if (province.isNotEmpty) province,
       if (category.isNotEmpty) category,
       if (number.isNotEmpty) number,
     ];
+    if (parts.isEmpty) return '';
 
-    if (parts.isEmpty) {
-      return '';
-    }
-
+    final plateType = _pick(v, const ['plateType', 'type']);
     final result = parts.join(' - ');
-
     if (plateType.isNotEmpty &&
-        plateType.toLowerCase() !=
-            _firstTextFromMap(vehicleInfo, ['type'])
-                .toLowerCase()) {
+        plateType.toLowerCase() != _pick(v, const ['type']).toLowerCase()) {
       return '$result ($plateType)';
     }
-
     return result;
   }
 
-  String _vehicleTypeLabel(String rawType) {
-    final value = rawType.trim().toLowerCase();
-
-    if (value.isEmpty) {
-      return 'وسیلهٔ نقلیه';
-    }
-
-    if (value == 'bike' ||
-        value == 'motorbike' ||
-        value == 'motorcycle' ||
-        value == 'موترسایکل' ||
-        value == 'موتورسیکلت') {
+  String _typeLabel(String raw) {
+    final v = raw.trim().toLowerCase();
+    if (v.isEmpty) return 'وسیلهٔ نقلیه';
+    if (const ['bike', 'motorbike', 'motorcycle', 'موترسایکل', 'موتورسیکلت']
+        .contains(v)) {
       return 'موترسایکل';
     }
-
-    if (value == 'cargo' ||
-        value == 'truck' ||
-        value == 'freight' ||
-        value == 'باربری') {
+    if (const ['cargo', 'truck', 'freight', 'باربری'].contains(v)) {
       return 'باربری';
     }
-
-    if (value == 'car' ||
-        value == 'taxi' ||
-        value == 'auto' ||
-        value == 'موتر' ||
-        value == 'تاکسی') {
+    if (const ['car', 'taxi', 'auto', 'موتر', 'تاکسی'].contains(v)) {
       return 'تاکسی';
     }
-
-    return rawType.trim();
+    return raw.trim();
   }
 
-  String _firstText(
-    Map<String, dynamic> data,
-    List<String> keys, {
-    String fallback = '',
-  }) {
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value == null) {
-        continue;
-      }
-
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-
-      if (value is num || value is bool) {
-        return value.toString();
-      }
-    }
-
-    return fallback;
-  }
-
-  String _firstTextFromMap(
-    Map<String, dynamic> data,
-    List<String> keys, {
-    String fallback = '',
-  }) {
-    for (final key in keys) {
-      final value = data[key];
-
-      if (value == null) {
-        continue;
-      }
-
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-
-      if (value is num || value is bool) {
-        return value.toString();
-      }
-    }
-
-    return fallback;
-  }
-
-  String? _firstNullableText(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
-    final value = _firstText(data, keys);
-
-    if (value.isEmpty) {
-      return null;
-    }
-
-    return value;
-  }
-
-  String? _firstNullableTextFromMap(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
-    final value = _firstTextFromMap(data, keys);
-
-    if (value.isEmpty) {
-      return null;
-    }
-
-    return value;
-  }
-
-  _DriverStatus _driverStatus(
-    Map<String, dynamic> data,
-  ) {
-    if (_isBlocked(data)) {
-      return _DriverStatus.blocked;
-    }
-
-    if (_isApproved(data)) {
-      return _DriverStatus.approved;
-    }
-
-    return _DriverStatus.pending;
-  }
-
-  bool _isApproved(
-    Map<String, dynamic> data,
-  ) {
-    final value = data['isApproved'];
-
-    if (value == true) {
-      return true;
-    }
-
-    final text = value?.toString().trim().toLowerCase();
-
-    if (text == 'true' ||
-        text == 'approved' ||
-        text == 'yes') {
-      return true;
-    }
-
-    final status = data['status']?.toString().trim().toLowerCase();
-
-    return status == 'approved';
-  }
-
-  bool _isBlocked(
-    Map<String, dynamic> data,
-  ) {
-    final value = data['isBlocked'];
-
-    if (value == true) {
-      return true;
-    }
-
-    final blockStatus = data['blockStatus']
-        ?.toString()
-        .trim()
-        .toLowerCase();
-
-    final status = data['status']
-        ?.toString()
-        .trim()
-        .toLowerCase();
-
-    return blockStatus == 'yes' ||
-        blockStatus == 'blocked' ||
-        status == 'blocked';
-  }
-
-  Color _statusColor(
-    _DriverStatus status,
-  ) {
-    switch (status) {
-      case _DriverStatus.approved:
-        return Colors.green;
-      case _DriverStatus.blocked:
-        return Colors.red;
-      case _DriverStatus.pending:
-        return Colors.orange;
+  IconData _vehicleIcon(String type) {
+    switch (type) {
+      case 'موترسایکل':
+        return Icons.two_wheeler_rounded;
+      case 'باربری':
+        return Icons.local_shipping_rounded;
+      default:
+        return Icons.local_taxi_rounded;
     }
   }
 
-  String _statusLabel(
-    _DriverStatus status,
-  ) {
-    switch (status) {
-      case _DriverStatus.approved:
+  // ───────── وضعیت ─────────
+  _Status _status(Map<String, dynamic> d) {
+    if (_isBlocked(d)) return _Status.blocked;
+    if (_isApproved(d)) return _Status.approved;
+    return _Status.pending;
+  }
+
+  bool _isApproved(Map<String, dynamic> d) {
+    final v = d['isApproved'];
+    if (v == true) return true;
+    final t = v?.toString().trim().toLowerCase();
+    if (t == 'true' || t == 'approved' || t == 'yes') return true;
+    return d['status']?.toString().trim().toLowerCase() == 'approved';
+  }
+
+  bool _isBlocked(Map<String, dynamic> d) {
+    if (d['isBlocked'] == true) return true;
+    final b = d['blockStatus']?.toString().trim().toLowerCase();
+    final s = d['status']?.toString().trim().toLowerCase();
+    return b == 'yes' || b == 'blocked' || s == 'blocked';
+  }
+
+  Color _statusColor(_Status s) {
+    switch (s) {
+      case _Status.approved:
+        return AppColors.ok;
+      case _Status.blocked:
+        return AppColors.danger;
+      case _Status.pending:
+        return AppColors.warning;
+    }
+  }
+
+  String _statusLabel(_Status s) {
+    switch (s) {
+      case _Status.approved:
         return 'تأیید شده';
-      case _DriverStatus.blocked:
+      case _Status.blocked:
         return 'مسدود شده';
-      case _DriverStatus.pending:
+      case _Status.pending:
         return 'در انتظار';
     }
   }
 
-  IconData _statusIcon(
-    _DriverStatus status,
-  ) {
-    switch (status) {
-      case _DriverStatus.approved:
+  IconData _statusIcon(_Status s) {
+    switch (s) {
+      case _Status.approved:
         return Icons.verified_rounded;
-      case _DriverStatus.blocked:
+      case _Status.blocked:
         return Icons.block_rounded;
-      case _DriverStatus.pending:
+      case _Status.pending:
         return Icons.pending_actions_rounded;
     }
   }
-
-  void _showPermissionMessage(String message) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.orange.shade700,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-  }
-
-  void _showSnackBar(
-    String message,
-    Color color,
-  ) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-  }
-
-  Widget _buildStateMessage({
-    required IconData icon,
-    required String message,
-    required Color color,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(34),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 44,
-            color: color,
-          ),
-          const SizedBox(height: 13),
-          SelectableText(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _DriverStatus {
-  pending,
-  approved,
-  blocked,
-}
-
-class _DriverDocument {
-  final String title;
-  final String url;
-
-  const _DriverDocument({
-    required this.title,
-    required this.url,
-  });
 }
