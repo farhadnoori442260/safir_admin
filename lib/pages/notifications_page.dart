@@ -11,7 +11,7 @@ import 'package:safir_admin/widgets/admin_ui.dart';
 
 /// آدرس سرور نتلایف برای ارسال اعلان‌ها
 const String kNotifyFunctionUrl =
-    'https://safir-notify-farhad.netlify.app/.netlify/functions/send-notification';
+    'https://safir-push-server.netlify.app/.netlify/functions/send-notification';
 
 class NotificationsPage extends StatefulWidget {
   static const String id = 'webPageNotifications';
